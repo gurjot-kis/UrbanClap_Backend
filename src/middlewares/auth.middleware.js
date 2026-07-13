@@ -44,5 +44,32 @@ export const authMiddleware = (req, res, next) => {
   }
 };
 
+/** Sets req.user when a valid Bearer token is present; continues without error when absent. */
+export const optionalAuthMiddleware = (req, res, next) => {
+  const authHeader = req.headers.authorization || "";
+  const [scheme, token] = authHeader.split(" ");
+
+  if (scheme !== "Bearer" || !token) {
+    return next();
+  }
+
+  if (isBlacklisted(token)) {
+    return next();
+  }
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = {
+      user_id: decoded.user_id,
+      email: decoded.email,
+      role: decoded.role || "User",
+    };
+  } catch {
+    // Invalid token — allow guest cart via guest_id on public cart routes.
+  }
+
+  return next();
+};
+
 export default authMiddleware;
 

@@ -4,7 +4,13 @@ const CartSchema = new mongoose.Schema(
   {
     user_id: {
       type: String,
-      required: true,
+      default: "",
+      index: true,
+      trim: true,
+    },
+    guest_id: {
+      type: String,
+      default: "",
       index: true,
       trim: true,
     },
@@ -24,7 +30,21 @@ const CartSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-CartSchema.index({ user_id: 1, product_id: 1 }, { unique: true });
+CartSchema.index(
+  { user_id: 1, product_id: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { user_id: { $gt: "" } },
+  }
+);
+
+CartSchema.index(
+  { guest_id: 1, product_id: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { guest_id: { $gt: "" } },
+  }
+);
 
 const Cart = mongoose.model("Cart", CartSchema);
 

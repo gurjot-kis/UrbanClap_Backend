@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import Cart from "../models/cart.model.js";
 import Product from "../models/product.model.js";
 import {
@@ -87,44 +88,111 @@ const mapCartItem = (item, product) => {
   };
 };
 
+const addToCartByOwner = async ({ ownerField, ownerId, product_id, quantity }) => {
+  const normalizedOwnerId = normalizeId(ownerId);
+  const normalizedProductId = normalizeId(product_id);
+  const addQuantity = quantity === undefined ? 1 : parseQuantity(quantity);
+
+  if (!normalizedOwnerId) {
+    throw new Error(`${ownerField} is required`);
+  }
+
+  if (!normalizedProductId) {
+    throw new Error("product_id is required");
+  }
+
+  const product = await getProductOrThrow(normalizedProductId);
+
+  const ownerFilter = { [ownerField]: normalizedOwnerId, product_id: normalizedProductId };
+  const existing = await Cart.findOne(ownerFilter).exec();
+
+  const currentInCart = existing ? Number(existing.quantity || 0) : 0;
+  const desiredTotal = currentInCart + addQuantity;
+  assertQuantityWithinStock(product, desiredTotal);
+
+  if (existing) {
+    existing.quantity = desiredTotal;
+    await existing.save();
+    return mapCartItem(existing, product);
+  }
+
+  const cartItem = await Cart.create({
+    [ownerField]: normalizedOwnerId,
+    product_id: normalizedProductId,
+    quantity: addQuantity,
+  });
+
+  return mapCartItem(cartItem, product);
+};
+
+const listCartItemsByOwner = async ({ ownerField, ownerId }) => {
+  const normalizedOwnerId = normalizeId(ownerId);
+  if (!normalizedOwnerId) {
+    throw new Error(`${ownerField} is required`);
+  }
+
+  const ownerFilter = { [ownerField]: normalizedOwnerId };
+  const cartItems = await Cart.find(ownerFilter).sort({ createdAt: -1 }).lean().exec();
+  const settings = await getActiveCartSettings();
+
+  if (cartItems.length === 0) {
+    return {
+      items: [],
+      totalItems: 0,
+      summary: computeCartSummary([], settings),
+    };
+  }
+
+  const productIds = [...new Set(cartItems.map((item) => item.product_id).filter(Boolean))];
+  const products = await Product.find({ product_id: { $in: productIds } }).lean().exec();
+  const productMap = new Map(products.map((product) => [product.product_id, product]));
+
+  const items = cartItems.map((item) => mapCartItem(item, productMap.get(item.product_id)));
+  const totalItems = items.reduce((acc, item) => acc + item.quantity, 0);
+  const summary = computeCartSummary(items, settings);
+
+  return {
+    items,
+    totalItems,
+    summary,
+  };
+};
+
 export const CartService = {
   addToCart: async ({ user_id, product_id, quantity }) => {
     const normalizedUserId = normalizeId(user_id);
-    const normalizedProductId = normalizeId(product_id);
-    const addQuantity = quantity === undefined ? 1 : parseQuantity(quantity);
-
     if (!normalizedUserId) {
       throw new Error("user_id is required");
     }
 
-    if (!normalizedProductId) {
-      throw new Error("product_id is required");
+    return addToCartByOwner({
+      ownerField: "user_id",
+      ownerId: normalizedUserId,
+      product_id,
+      quantity,
+    });
+  },
+
+  addToGuestCart: async ({ guest_id, product_id, quantity }) => {
+    let normalizedGuestId = normalizeId(guest_id);
+    const guestCreated = !normalizedGuestId;
+
+    if (guestCreated) {
+      normalizedGuestId = crypto.randomUUID();
     }
 
-    const product = await getProductOrThrow(normalizedProductId);
-
-    const existing = await Cart.findOne({
-      user_id: normalizedUserId,
-      product_id: normalizedProductId,
-    }).exec();
-
-    const currentInCart = existing ? Number(existing.quantity || 0) : 0;
-    const desiredTotal = currentInCart + addQuantity;
-    assertQuantityWithinStock(product, desiredTotal);
-
-    if (existing) {
-      existing.quantity = desiredTotal;
-      await existing.save();
-      return mapCartItem(existing, product);
-    }
-
-    const cartItem = await Cart.create({
-      user_id: normalizedUserId,
-      product_id: normalizedProductId,
-      quantity: addQuantity,
+    const item = await addToCartByOwner({
+      ownerField: "guest_id",
+      ownerId: normalizedGuestId,
+      product_id,
+      quantity,
     });
 
-    return mapCartItem(cartItem, product);
+    return {
+      guest_id: normalizedGuestId,
+      guest_created: guestCreated,
+      ...item,
+    };
   },
 
   updateQuantity: async ({ user_id, product_id, quantity }) => {
@@ -192,33 +260,86 @@ export const CartService = {
       throw new Error("user_id is required");
     }
 
-    const cartItems = await Cart.find({ user_id: normalizedUserId })
-      .sort({ createdAt: -1 })
-      .lean()
-      .exec();
+    return listCartItemsByOwner({ ownerField: "user_id", ownerId: normalizedUserId });
+  },
 
-    const settings = await getActiveCartSettings();
-
-    if (cartItems.length === 0) {
-      return {
-        items: [],
-        totalItems: 0,
-        summary: computeCartSummary([], settings),
-      };
+  listGuestCartItems: async ({ guest_id }) => {
+    const normalizedGuestId = normalizeId(guest_id);
+    if (!normalizedGuestId) {
+      throw new Error("guest_id is required");
     }
 
-    const productIds = [...new Set(cartItems.map((item) => item.product_id).filter(Boolean))];
-    const products = await Product.find({ product_id: { $in: productIds } }).lean().exec();
-    const productMap = new Map(products.map((product) => [product.product_id, product]));
-
-    const items = cartItems.map((item) => mapCartItem(item, productMap.get(item.product_id)));
-    const totalItems = items.reduce((acc, item) => acc + item.quantity, 0);
-    const summary = computeCartSummary(items, settings);
+    const cart = await listCartItemsByOwner({
+      ownerField: "guest_id",
+      ownerId: normalizedGuestId,
+    });
 
     return {
-      items,
-      totalItems,
-      summary,
+      guest_id: normalizedGuestId,
+      ...cart,
+    };
+  },
+
+  updateGuestQuantity: async ({ guest_id, product_id, quantity }) => {
+    const normalizedGuestId = normalizeId(guest_id);
+    const normalizedProductId = normalizeId(product_id);
+    const nextQuantity = parseQuantity(quantity);
+
+    if (!normalizedGuestId) {
+      throw new Error("guest_id is required");
+    }
+
+    if (!normalizedProductId) {
+      throw new Error("product_id is required");
+    }
+
+    const [cartItem, product] = await Promise.all([
+      Cart.findOne({
+        guest_id: normalizedGuestId,
+        product_id: normalizedProductId,
+      }).exec(),
+      getProductOrThrow(normalizedProductId),
+    ]);
+
+    if (!cartItem) {
+      throw new Error("Cart item not found");
+    }
+
+    assertQuantityWithinStock(product, nextQuantity);
+
+    cartItem.quantity = nextQuantity;
+    await cartItem.save();
+
+    return {
+      guest_id: normalizedGuestId,
+      ...mapCartItem(cartItem, product),
+    };
+  },
+
+  deleteGuestCartItem: async ({ guest_id, product_id }) => {
+    const normalizedGuestId = normalizeId(guest_id);
+    const normalizedProductId = normalizeId(product_id);
+
+    if (!normalizedGuestId) {
+      throw new Error("guest_id is required");
+    }
+
+    if (!normalizedProductId) {
+      throw new Error("product_id is required");
+    }
+
+    const deleted = await Cart.findOneAndDelete({
+      guest_id: normalizedGuestId,
+      product_id: normalizedProductId,
+    }).exec();
+
+    if (!deleted) {
+      throw new Error("Cart item not found");
+    }
+
+    return {
+      guest_id: normalizedGuestId,
+      product_id: normalizedProductId,
     };
   },
 };
