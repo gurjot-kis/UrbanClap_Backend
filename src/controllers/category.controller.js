@@ -1,5 +1,9 @@
 import { CategoryService } from "../services/category.service.js";
 
+import Category from "../models/category.model.js";
+
+
+
 const sendError = (res, code, message) => {
   return res.status(code).json({
     success: false,
@@ -35,21 +39,80 @@ export const CategoryController = {
     }
   },
 
-  getCategories: async (req, res) => {
-    try {
-      const { page, limit, name } = req.query;
-      const { categories, pagination } = await CategoryService.getCategories({ page, limit, name });
-      return res.status(200).json({
-        success: true,
-        code: 200,
-        message: "Categories fetched successfully",
-        data: categories,
-        pagination,
-      });
-    } catch (_err) {
-      return sendError(res, 500, "Unable to fetch categories");
-    }
-  },
+getCategories: async (req, res) => {
+  try {
+    const categories = await Category.aggregate([
+      {
+        $match: { level: 1 }
+      },
+      {
+        $lookup: {
+          from: "categories",
+          let: { parentId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ["$parent_id", "$$parentId"] }
+              }
+            },
+            {
+              $lookup: {
+                from: "categories",
+                let: { childId: "$_id" },
+                pipeline: [
+                  {
+                    $match: {
+                      $expr: { $eq: ["$parent_id", "$$childId"] }
+                    }
+                  },
+                  {
+                    $project: {
+                      name: 1,
+                      level: 1,
+                      description: 1,
+                      category_image: 1
+                    }
+                  }
+                ],
+                as: "children"
+              }
+            },
+            {
+              $project: {
+                name: 1,
+                level: 1,
+                description: 1,
+                category_image: 1,
+                children: 1
+              }
+            }
+          ],
+          as: "children"
+        }
+      },
+      {
+        $project: {
+          name: 1,
+          level: 1,
+          description: 1,
+          category_image: 1,
+          children: 1
+        }
+      }
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: categories
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+},
 
   getCategoryById: async (req, res) => {
     try {
