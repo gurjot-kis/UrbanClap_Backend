@@ -9,7 +9,7 @@ const router = express.Router();
 
 //router.get("/", getCategories);
 
-router.get("/categories/public", CategoryController.getCategories);
+router.get("/categories", CategoryController.getCategories);
 
 // router.post(
 //   "/categories",

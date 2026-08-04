@@ -34,8 +34,8 @@ const categorySchema = new mongoose.Schema(
     },
   },
   {
-    timestamps: true, // Automatically adds createdAt & updatedAt
-    versionKey: false // Removes __v field
+    timestamps: true, 
+    versionKey: false 
   }
 );
 

@@ -1,64 +1,14 @@
 import express from "express";
 import { ProductController } from "../controllers/product.controller.js";
-import { authMiddleware } from "../middlewares/auth.middleware.js";
-import { authorizeRoles, ROLES } from "../middlewares/role.middleware.js";
-import { uploadProductImages } from "../middlewares/upload.middleware.js";
 
 const router = express.Router();
 
 router.get(
-  "/public/products/category/:category_id",
-  ProductController.getPublicProductsByCategory
+  "/product/sub/:sub_category_id",
+  ProductController.getProductsBySubCategory,
 );
+router.get("/product/:id", ProductController.getProductById);
 
-router.get(
-  "/public/products/category/:category_id/sub-category/:sub_category_id",
-  ProductController.getPublicProductsBySubCategory
-);
-
-router.post(
-  "/products",
-  authMiddleware,
-  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.VENDOR),
-  uploadProductImages,
-  ProductController.createProduct
-);
-
-router.put(
-  "/products/:product_id",
-  authMiddleware,
-  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.VENDOR),
-  uploadProductImages,
-  ProductController.updateProduct
-);
-
-router.patch(
-  "/products/:product_id",
-  authMiddleware,
-  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.VENDOR),
-  uploadProductImages,
-  ProductController.editProduct
-);
-
-router.delete(
-  "/products/:product_id",
-  authMiddleware,
-  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.VENDOR),
-  ProductController.deleteProduct
-);
-
-router.get(
-  "/products",
-  authMiddleware,
-  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.USER, ROLES.VENDOR),
-  ProductController.getProducts
-);
-
-router.get(
-  "/products/:product_id",
-  authMiddleware,
-  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.USER, ROLES.VENDOR),
-  ProductController.getProductById
-);
+router.get("/products-with-cateogory/:category_id", ProductController.getChildCategoriesWithProducts);
 
 export default router;

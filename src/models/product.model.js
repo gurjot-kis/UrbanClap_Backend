@@ -1,19 +1,38 @@
 import mongoose from "mongoose";
-import crypto from "crypto";
+
+
+const VariantSchema = new mongoose.Schema(
+  {
+    label: { type: String, required: true, trim: true }, 
+    price: { type: Number, required: true, min: 0 },     
+    costPrice: { type: Number, required: true, min: 0 }, 
+  },
+  { _id: false }
+);
+
+const RatingSchema = new mongoose.Schema(
+  {
+    average: { type: Number, default: 0, min: 0, max: 5 },
+    count: { type: Number, default: 0, min: 0 },
+  },
+  { _id: false }
+);
+
+// ─── Main Schema ──────────────────────────────────────────────────────────────
 
 const ProductSchema = new mongoose.Schema(
   {
-    product_id: {
-      type: String,
-      required: true,
-      unique: true,
-      default: () => crypto.randomUUID(),
-    },
     name: {
       type: String,
       required: true,
       trim: true,
-      index: true,
+    },
+    slug: {
+      type: String,
+      required: true,
+      trim: true,
+      lowercase: true,
+      unique: true,
     },
     description: {
       type: String,
@@ -25,92 +44,93 @@ const ProductSchema = new mongoose.Schema(
       default: "",
       trim: true,
     },
-    category_id: {
-      type: String,
-      required: true,
-      index: true,
+
+
+    includes: {
+      type: [String],
+      default: [],
     },
-    sub_category_id: {
-      type: String,
-      required: false,
-      default: "",
-      index: true,
-    },
+
     mainImage: {
       type: String,
       required: true,
       trim: true,
     },
-    featuredImages: {
+    images: {
       type: [String],
       default: [],
     },
-    sku: {
-      type: String,
+
+    category_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Category",
       required: true,
-      trim: true,
-      unique: true,
-      index: true,
     },
+    sub_category_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Category",
+      default: null,
+    },
+
+    vendor_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+
+    basePrice: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+
+    variantLabel: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    variants: {
+      type: [VariantSchema],
+      default: [],
+    },
+
+    durationMinutes: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    rating: {
+      type: RatingSchema,
+      default: () => ({ average: 0, count: 0 }),
+    },
+
     status: {
       type: String,
       enum: ["pending", "active", "rejected"],
       default: "pending",
-      index: true,
-    },
-    currency: {
-      type: String,
-      required: true,
-      trim: true,
-      uppercase: true,
-    },
-    stock: {
-      type: Number,
-      required: true,
-      min: 0,
-      default: 0,
-    },
-    slug: {
-      type: String,
-      required: true,
-      trim: true,
-      unique: true,
-      index: true,
-    },
-    stockStatus: {
-      type: String,
-      enum: ["in_stock", "out_of_stock"],
-      required: true,
-      default: "in_stock",
-      index: true,
-    },
-    costPrice: {
-      type: Number,
-      required: true,
-      min: 0,
-    },
-    sellingPrice: {
-      type: Number,
-      required: true,
-      min: 0,
-    },
-    price: {
-      type: Number,
-      required: true,
-      min: 0,
-    },
-    role: {
-      type: String,
-      enum: ["SuperAdmin", "User", "Vendor"],
-      index: true,
-    },
-    user_id: {
-      type: String,
-      index: true,
     },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+    versionKey: false,
+  }
 );
+
+// ─── Indexes ─────────────────────────────────────────────────────────────────
+
+ProductSchema.index({ name: 1 });
+ProductSchema.index({ slug: 1 });              
+ProductSchema.index({ category_id: 1 });
+ProductSchema.index({ sub_category_id: 1 });
+ProductSchema.index({ vendor_id: 1 });
+ProductSchema.index({ status: 1 });
+ProductSchema.index({ basePrice: 1 });          
+ProductSchema.index({ "rating.average": -1 });   
+
+// ─── Model ───────────────────────────────────────────────────────────────────
 
 const Product = mongoose.model("Product", ProductSchema);
 
