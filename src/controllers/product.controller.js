@@ -1,55 +1,44 @@
+import { sendError, sendSuccess } from "../helpers/response.helper.js";
 import { ProductService } from "../services/product.service.js";
-
-const sendError = (res, code, message) =>
-  res.status(code).json({ success: false, code, message, data: null });
 
 const resolveError = (res, err) => {
   const msg = err?.message || "Something went wrong";
-  if (
-    [
-      "Category not found",
-      "Sub-category not found in this category",
-      "Product not found",
-    ].includes(msg)
-  ) {
-    return sendError(res, 404, msg);
+
+  const notFound = [
+    "Category not found",
+    "Sub-category not found in this category",
+    "Product not found",
+  ];
+  const badRequest = [
+    "Invalid product id",
+    "Invalid category_id",
+    "Invalid sub_category_id",
+    "Product name is required",
+    "Base price is required",
+    "Main image is required",
+    "Slug already exists",
+    "Invalid variants format",
+    "Invalid includes format",
+    "Invalid status value",
+    "Status is required",
+    "Invalid page number",
+    "Invalid limit number",
+  ];
+
+  if (notFound.includes(msg)) {
+    return sendError(res, { code: 404, message: msg });
   }
-  if (
-    [
-      "Invalid product id",
-      "Invalid category_id",
-      "Invalid sub_category_id",
-    ].includes(msg)
-  ) {
-    return sendError(res, 400, msg);
+  if (badRequest.includes(msg)) {
+    return sendError(res, { code: 400, message: msg });
   }
-  return sendError(res, 500, msg);
+  return sendError(res, { code: 500, message: msg, error: err?.message });
 };
 
 export const ProductController = {
-  getProductsBySubCategory: async (req, res) => {
-    try {
-      const { sub_category_id } = req.params;
-      const result = await ProductService.getProductsBySubCategory(
-        sub_category_id,
-        req.query,
-      );
-      return res.status(200).json({
-        success: true,
-        code: 200,
-        message: "Products fetched successfully",
-        ...result,
-      });
-    } catch (err) {
-      return resolveError(res, err);
-    }
-  },
-
   getProductById: async (req, res) => {
     try {
       const data = await ProductService.getProductById(req.params.id);
-      return res.status(200).json({
-        success: true,
+      return sendSuccess(res, {
         code: 200,
         message: "Product fetched successfully",
         data,
@@ -66,11 +55,85 @@ export const ProductController = {
         category_id,
         req.query,
       );
-      return res.status(200).json({
-        success: true,
+
+      return sendSuccess(res, {
         code: 200,
         message: "Categories with products fetched successfully",
-        ...result,
+        data: result,
+      });
+    } catch (err) {
+      return resolveError(res, err);
+    }
+  },
+
+  // ─── Admin Panel ────────────────────────────────────────────────────────
+  getAllProducts: async (req, res) => {
+    try {
+      const result = await ProductService.getAllProducts(req.query);
+      return sendSuccess(res, {
+        code: 200,
+        message: "Products fetched successfully",
+        data: result.data,
+        pagination: result.pagination,
+      });
+    } catch (err) {
+      return resolveError(res, err);
+    }
+  },
+
+  createProduct: async (req, res) => {
+    try {
+      const data = await ProductService.createProduct(req.body, req.files);
+      return sendSuccess(res, {
+        code: 201,
+        message: "Product created successfully",
+        data,
+      });
+    } catch (err) {
+      return resolveError(res, err);
+    }
+  },
+
+  updateProduct: async (req, res) => {
+    try {
+      const data = await ProductService.updateProduct(
+        req.params.id,
+        req.body,
+        req.files,
+      );
+      return sendSuccess(res, {
+        code: 200,
+        message: "Product updated successfully",
+        data,
+      });
+    } catch (err) {
+      return resolveError(res, err);
+    }
+  },
+
+  updateProductStatus: async (req, res) => {
+    try {
+      const data = await ProductService.updateProductStatus(
+        req.params.id,
+        req.body.status,
+      );
+      return sendSuccess(res, {
+        code: 200,
+        message: "Product status updated successfully",
+        data,
+      });
+    } catch (err) {
+      return resolveError(res, err);
+    }
+  },
+
+  deleteProduct: async (req, res) => {
+    try {
+      const data = await ProductService.deleteProduct(req.params.id);
+      return sendSuccess(res, {
+        code: 200,
+        message: "Product deleted successfully",
+        data,
       });
     } catch (err) {
       return resolveError(res, err);

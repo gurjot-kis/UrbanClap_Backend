@@ -1,191 +1,229 @@
+import mongoose from "mongoose";
+import fs from "fs";
+import path from "path";
+import { sendError, sendSuccess } from "../helpers/response.helper.js";
 import { CategoryService } from "../services/category.service.js";
 
-import Category from "../models/category.model.js";
-
-
-
-const sendError = (res, code, message) => {
-  return res.status(code).json({
-    success: false,
-    code,
-    message,
-    data: null,
-  });
-};
-
 export const CategoryController = {
-  createCategory: async (req, res) => {
+  getCategories: async (req, res) => {
     try {
-      const payload = { ...(req.body || {}) };
-      if (req.file) {
-        payload.category_image = `/uploads/categories/${req.file.filename}`;
-      }
+      const categories = await CategoryService.getCategoryTree();
 
-      const data = await CategoryService.createCategory(payload);
-      return res.status(200).json({
-        success: true,
-        code: 200,
-        message: "Category created successfully",
-        data,
+      return sendSuccess(res, {
+        message: "Categories fetched successfully",
+        data: categories,
       });
-    } catch (err) {
-      const message = err?.message || "Category creation failed";
-
-      if (message === "Category already exists") {
-        return sendError(res, 409, message);
-      }
-
-      return sendError(res, 400, message);
+    } catch (error) {
+      return sendError(res, {
+        code: 500,
+        message: error.message,
+      });
     }
   },
 
-getCategories: async (req, res) => {
-  try {
-    const categories = await Category.aggregate([
-      {
-        $match: { level: 1 }
-      },
-      {
-        $lookup: {
-          from: "categories",
-          let: { parentId: "$_id" },
-          pipeline: [
-            {
-              $match: {
-                $expr: { $eq: ["$parent_id", "$$parentId"] }
-              }
-            },
-            {
-              $lookup: {
-                from: "categories",
-                let: { childId: "$_id" },
-                pipeline: [
-                  {
-                    $match: {
-                      $expr: { $eq: ["$parent_id", "$$childId"] }
-                    }
-                  },
-                  {
-                    $project: {
-                      name: 1,
-                      level: 1,
-                      description: 1,
-                      category_image: 1
-                    }
-                  }
-                ],
-                as: "children"
-              }
-            },
-            {
-              $project: {
-                name: 1,
-                level: 1,
-                description: 1,
-                category_image: 1,
-                children: 1
-              }
-            }
-          ],
-          as: "children"
-        }
-      },
-      {
-        $project: {
-          name: 1,
-          level: 1,
-          description: 1,
-          category_image: 1,
-          children: 1
-        }
-      }
-    ]);
-
-    res.status(200).json({
-      success: true,
-      data: categories
-    });
-
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
-  }
-},
-
   getCategoryById: async (req, res) => {
     try {
-      const { category_id } = req.params || {};
-      const data = await CategoryService.getCategoryById({ category_id });
-      return res.status(200).json({
-        success: true,
-        code: 200,
-        message: "Category fetched successfully",
-        data,
-      });
-    } catch (err) {
-      const message = err?.message || "Unable to fetch category";
+      const { id } = req.params;
 
-      if (message === "Category not found") {
-        return sendError(res, 404, message);
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return sendError(res, {
+          code: 400,
+          message: "Invalid category id",
+        });
       }
 
-      return sendError(res, 400, message);
+      const category = await CategoryService.getCategoryById(id);
+
+      if (!category) {
+        return sendError(res, {
+          code: 404,
+          message: "Category not found",
+        });
+      }
+
+      return sendSuccess(res, {
+        message: "Category fetched successfully",
+        data: category,
+      });
+    } catch (error) {
+      return sendError(res, {
+        code: 500,
+        message: error.message,
+      });
+    }
+  },
+
+  createCategory: async (req, res) => {
+    try {
+      const { name, parent_id, description } = req.body;
+
+      if (!name || !name.trim()) {
+        return sendError(res, {
+          code: 400,
+          message: "Category name is required",
+        });
+      }
+
+      if (parent_id && !mongoose.Types.ObjectId.isValid(parent_id)) {
+        return sendError(res, {
+          code: 400,
+          message: "Invalid parent category id",
+        });
+      }
+
+      const category_image = req.file
+        ? `/uploads/categories/${req.file.filename}`
+        : "";
+
+      const category = await CategoryService.createCategory({
+        name,
+        parent_id,
+        description,
+        category_image,
+      });
+
+      return sendSuccess(res, {
+        code: 200,
+        message: "Category created successfully",
+        data: category,
+      });
+    } catch (error) {
+      return sendError(res, {
+        code: error.statusCode || 500,
+        message: error.message,
+      });
     }
   },
 
   updateCategory: async (req, res) => {
     try {
-      const { category_id } = req.params || {};
-      const payload = { ...(req.body || {}) };
-      if (req.file) {
-        payload.category_image = `/uploads/categories/${req.file.filename}`;
+      const { id } = req.params;
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return sendError(res, {
+          code: 400,
+          message: "Invalid category id",
+        });
       }
 
-      const data = await CategoryService.updateCategory({ category_id, ...payload });
-      return res.status(200).json({
-        success: true,
-        code: 200,
-        message: "Category updated successfully",
-        data,
+      const { name, parent_id, description } = req.body;
+
+      if (name !== undefined && !name.trim()) {
+        return sendError(res, {
+          code: 400,
+          message: "Category name cannot be empty",
+        });
+      }
+
+      if (
+        parent_id &&
+        !mongoose.Types.ObjectId.isValid(parent_id) &&
+        parent_id !== ""
+      ) {
+        return sendError(res, {
+          code: 400,
+          message: "Invalid parent category id",
+        });
+      }
+
+      // Only overwrite category_image if a new file was uploaded
+      const category_image = req.file
+        ? `/uploads/categories/${req.file.filename}`
+        : undefined;
+
+      const category = await CategoryService.updateCategory(id, {
+        name,
+        parent_id,
+        description,
+        category_image,
       });
-    } catch (err) {
-      const message = err?.message || "Category update failed";
 
-      if (message === "Category not found") {
-        return sendError(res, 404, message);
-      }
-
-      if (message === "Category name already exists") {
-        return sendError(res, 409, message);
-      }
-
-      return sendError(res, 400, message);
+      return sendSuccess(res, {
+        message: "Category updated successfully",
+        data: category,
+      });
+    } catch (error) {
+      return sendError(res, {
+        code: error.statusCode || 500,
+        message: error.message,
+      });
     }
   },
 
   deleteCategory: async (req, res) => {
     try {
-      const { category_id } = req.params || {};
-      const data = await CategoryService.deleteCategory({ category_id });
-      return res.status(200).json({
-        success: true,
-        code: 200,
-        message: "Category deleted successfully",
-        data,
-      });
-    } catch (err) {
-      const message = err?.message || "Category deletion failed";
+      const { id } = req.params;
 
-      if (message === "Category not found") {
-        return sendError(res, 404, message);
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return sendError(res, {
+          code: 400,
+          message: "Invalid category id",
+        });
       }
 
-      return sendError(res, 400, message);
+      const result = await CategoryService.deleteCategory(id);
+
+      // Clean up all images (category + product) from disk
+      result.images.forEach((imgPath) => {
+        const fullPath = path.join(process.cwd(), imgPath);
+        fs.unlink(fullPath, (err) => {
+          if (err)
+            console.error(`Failed to delete image: ${fullPath}`, err.message);
+        });
+      });
+
+      // Build a descriptive message
+      const categoryMsg =
+        result.deletedCategoryCount > 1
+          ? `${result.deletedCategoryCount} categories`
+          : "1 category";
+
+      const productMsg =
+        result.deletedProductCount > 0
+          ? ` and ${result.deletedProductCount} associated product${result.deletedProductCount > 1 ? "s" : ""}`
+          : "";
+
+      return sendSuccess(res, {
+        message: `${categoryMsg}${productMsg} deleted successfully`,
+        data: {
+          deletedCategoryCount: result.deletedCategoryCount,
+          deletedProductCount: result.deletedProductCount,
+          deletedCategoryIds: result.deletedCategoryIds,
+          deletedProductIds: result.deletedProductIds,
+        },
+      });
+    } catch (error) {
+      return sendError(res, {
+        code: error.statusCode || 500,
+        message: error.message,
+      });
+    }
+  },
+
+  toggleCategoryStatus: async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return sendError(res, {
+          code: 400,
+          message: "Invalid category id",
+        });
+      }
+
+      const category = await CategoryService.toggleCategoryStatus(id);
+
+      return sendSuccess(res, {
+        message: `Category status changed to ${category.status}`,
+        data: category,
+      });
+    } catch (error) {
+      return sendError(res, {
+        code: error.statusCode || 500,
+        message: error.message,
+      });
     }
   },
 };
 
 export default CategoryController;
-

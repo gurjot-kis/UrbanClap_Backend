@@ -1,13 +1,13 @@
 import mongoose from "mongoose";
 
-
 const VariantSchema = new mongoose.Schema(
   {
-    label: { type: String, required: true, trim: true }, 
-    price: { type: Number, required: true, min: 0 },     
-    costPrice: { type: Number, required: true, min: 0 }, 
+    label: { type: String, required: true, trim: true },
+    price: { type: Number, required: true, min: 0 },
+    costPrice: { type: Number, required: true, min: 0 },
+    image: { type: String, trim: true, default: null },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const RatingSchema = new mongoose.Schema(
@@ -15,7 +15,7 @@ const RatingSchema = new mongoose.Schema(
     average: { type: Number, default: 0, min: 0, max: 5 },
     count: { type: Number, default: 0, min: 0 },
   },
-  { _id: false }
+  { _id: false },
 );
 
 // ─── Main Schema ──────────────────────────────────────────────────────────────
@@ -44,7 +44,6 @@ const ProductSchema = new mongoose.Schema(
       default: "",
       trim: true,
     },
-
 
     includes: {
       type: [String],
@@ -77,7 +76,6 @@ const ProductSchema = new mongoose.Schema(
       ref: "User",
       default: null,
     },
-
 
     basePrice: {
       type: Number,
@@ -116,19 +114,19 @@ const ProductSchema = new mongoose.Schema(
   {
     timestamps: true,
     versionKey: false,
-  }
+  },
 );
 
 // ─── Indexes ─────────────────────────────────────────────────────────────────
 
 ProductSchema.index({ name: 1 });
-ProductSchema.index({ slug: 1 });              
+ProductSchema.index({ slug: 1 });
 ProductSchema.index({ category_id: 1 });
 ProductSchema.index({ sub_category_id: 1 });
 ProductSchema.index({ vendor_id: 1 });
 ProductSchema.index({ status: 1 });
-ProductSchema.index({ basePrice: 1 });          
-ProductSchema.index({ "rating.average": -1 });   
+ProductSchema.index({ basePrice: 1 });
+ProductSchema.index({ "rating.average": -1 });
 
 // ─── Model ───────────────────────────────────────────────────────────────────
 

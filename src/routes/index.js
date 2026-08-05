@@ -22,13 +22,13 @@ router.get('/', (req, res) => {
 // POST /api/signup
 // POST /api/login
 router.use(authRoutes);
-router.use(categoryRoutes);
+router.use("/categories", categoryRoutes);
 router.use(subCategoryRoutes);
 router.use(productRoutes);
 router.use(userRoutes);
 router.use(dashboardRoutes);
 router.use(adminRoutes);
-router.use(cartRoutes);
+router.use("/cart", cartRoutes);
 router.use(addressRoutes);
 router.use(orderRoutes);
 router.use(bannerRoutes);

@@ -32,17 +32,24 @@ const categorySchema = new mongoose.Schema(
       default: "",
       trim: true,
     },
+
+    status: {
+      type: String,
+      enum: ["active", "inactive"],
+      default: "active",
+    },
   },
   {
-    timestamps: true, 
-    versionKey: false 
-  }
+    timestamps: true,
+    versionKey: false,
+  },
 );
 
 // Indexes
 categorySchema.index({ parent_id: 1 });
 categorySchema.index({ level: 1 });
 categorySchema.index({ name: 1 });
+categorySchema.index({ status: 1 });
 
 const Category = mongoose.model("Category", categorySchema);
 
