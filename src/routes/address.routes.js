@@ -5,46 +5,19 @@ import { authorizeRoles, ROLES } from "../middlewares/role.middleware.js";
 
 const router = express.Router();
 
-router.patch(
-  "/address/:address_id/default",
-  authMiddleware,
-  authorizeRoles(ROLES.USER),
-  AddressController.setDefaultAddress
-);
+router.use(authMiddleware, authorizeRoles(ROLES.USER));
 
-router.post(
-  "/address",
-  authMiddleware,
-  authorizeRoles(ROLES.USER),
-  AddressController.addAddress
-);
+router
+  .route("/")
+  .post(AddressController.addAddress)
+  .get(AddressController.listAddresses);
 
-router.put(
-  "/address/:address_id",
-  authMiddleware,
-  authorizeRoles(ROLES.USER),
-  AddressController.updateAddress
-);
+router
+  .route("/:id")
+  .get(AddressController.getAddressById)
+  .put(AddressController.updateAddress)
+  .delete(AddressController.deleteAddress);
 
-router.delete(
-  "/address/:address_id",
-  authMiddleware,
-  authorizeRoles(ROLES.USER),
-  AddressController.deleteAddress
-);
-
-router.get(
-  "/address/list",
-  authMiddleware,
-  authorizeRoles(ROLES.USER),
-  AddressController.listAddresses
-);
-
-router.get(
-  "/address",
-  authMiddleware,
-  authorizeRoles(ROLES.USER),
-  AddressController.listAddresses
-);
+router.patch("/:id/default", AddressController.setDefaultAddress);
 
 export default router;

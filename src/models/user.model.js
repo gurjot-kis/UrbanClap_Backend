@@ -55,10 +55,9 @@ const UserSchema = new mongoose.Schema(
     loginTwilioOtp: { type: String, default: null },
     loginTwilioOtpExpiry: { type: Date, default: null },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 const User = mongoose.model("User", UserSchema);
 
 export default User;
-

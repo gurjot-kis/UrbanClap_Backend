@@ -5,11 +5,10 @@ import { optionalAuthMiddleware } from "../middlewares/auth.middleware.js";
 
 const router = express.Router();
 
-/**
- * POST /api/cart/add
- * Single unified endpoint — works for guests and logged-in users.
- * optionalAuthMiddleware populates req.user if token is present; otherwise skips.
- */
+router.get("/", optionalAuthMiddleware, CartController.getCart);
 router.post("/add", optionalAuthMiddleware, CartController.addToCart);
+
+router.patch("/:item_id/decrement", optionalAuthMiddleware, CartController.decrementItem);
+router.delete("/:item_id", optionalAuthMiddleware, CartController.removeItem);
 
 export default router;

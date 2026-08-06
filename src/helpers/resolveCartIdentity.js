@@ -15,7 +15,8 @@ const COOKIE_MAX_AGE = 30 * 24 * 60 * 60 * 1000; // 30 days in ms
  * may need to be written (i.e. public/guest routes).
  */
 export function resolveCartIdentity(req, res = null) {
-  const userId = req.user?.user_id ?? null;
+  console.log("resolveCartIdentity: req.user:", req.user);
+  const userId = req.user?._id ?? null;
 
   if (userId) {
     return { user_id: userId, guestId: null, isGuest: false, guestCreated: false };

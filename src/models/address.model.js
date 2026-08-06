@@ -1,76 +1,96 @@
 import mongoose from "mongoose";
-import crypto from "crypto";
+const { Schema } = mongoose;
 
-const AddressSchema = new mongoose.Schema(
+const addressSchema = new Schema(
   {
-    address_id: {
-      type: String,
-      required: true,
-      unique: true,
-      default: () => crypto.randomUUID(),
+    user: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: [true, "User reference is required"],
       index: true,
     },
-    user_id: {
+
+    label: {
       type: String,
-      required: true,
-      index: true,
-      trim: true,
+      enum: ["home", "work", "other"],
+      default: "home",
     },
-    fullName: {
+
+    customLabel: {
       type: String,
-      required: true,
       trim: true,
+      maxlength: 50,
     },
-    phone: {
+
+    contactName: {
       type: String,
-      required: true,
+      required: [true, "Contact name is required"],
       trim: true,
+      maxlength: 100,
     },
+    contactPhone: {
+      type: String,
+      required: [true, "Contact phone is required"],
+      trim: true,
+      match: [/^[6-9]\d{9}$/, "Please enter a valid 10-digit phone number"],
+    },
+
+    houseNo: { type: String, trim: true, maxlength: 100 },
     addressLine1: {
       type: String,
-      required: true,
+      required: [true, "Address line 1 is required"],
       trim: true,
+      maxlength: 200,
     },
-    addressLine2: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-    landmark: {
-      type: String,
-      default: "",
-      trim: true,
-    },
+    addressLine2: { type: String, trim: true, maxlength: 200 },
+    landmark: { type: String, trim: true, maxlength: 150 },
+
     city: {
       type: String,
-      required: true,
+      required: [true, "City is required"],
       trim: true,
+      index: true,
     },
-    state: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    country: {
-      type: String,
-      required: true,
-      trim: true,
-    },
+    state: { type: String, required: [true, "State is required"], trim: true },
+    country: { type: String, required: true, trim: true, default: "India" },
     pincode: {
       type: String,
-      required: true,
+      required: [true, "Pincode is required"],
       trim: true,
+      match: [/^\d{6}$/, "Please enter a valid 6-digit pincode"],
     },
-    isDefault: {
-      type: Boolean,
-      default: false,
+
+    location: {
+      type: {
+        type: String,
+        enum: ["Point"],
+        default: "Point",
+      },
+      coordinates: {
+        type: [Number],
+        default: [0, 0],
+      },
     },
-    latitude: { type: Number, default: null },
-    longitude: { type: Number, default: null },
+
+    addressType: {
+      type: String,
+      enum: ["apartment", "independent_house", "office", "other"],
+      default: "apartment",
+    },
+    instructions: { type: String, trim: true, maxlength: 300 },
+
+    isDefault: { type: Boolean, default: false },
+
+    isActive: { type: Boolean, default: true, select: true },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+  },
 );
 
-const Address = mongoose.model("Address", AddressSchema);
+addressSchema.index({ location: "2dsphere" });
+addressSchema.index({ user: 1, isActive: 1 });
+
+const Address = mongoose.model("Address", addressSchema);
 
 export default Address;

@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 
 const CartItemVariantSchema = new mongoose.Schema(
   {
+    key: { type: String, required: true, trim: true },
     label: { type: String, required: true, trim: true },
     price: { type: Number, required: true, min: 0 },
     image: { type: String, default: null, trim: true },
@@ -45,12 +46,10 @@ const CartSchema = new mongoose.Schema(
     user_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      default: null,
     },
     guestId: {
       type: String,
       trim: true,
-      default: null,
     },
 
     items: {

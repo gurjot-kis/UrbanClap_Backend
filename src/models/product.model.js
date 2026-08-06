@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 
 const VariantSchema = new mongoose.Schema(
   {
+    key: { type: String, required: true, trim: true },
     label: { type: String, required: true, trim: true },
     price: { type: Number, required: true, min: 0 },
     costPrice: { type: Number, required: true, min: 0 },
@@ -103,6 +104,12 @@ const ProductSchema = new mongoose.Schema(
     rating: {
       type: RatingSchema,
       default: () => ({ average: 0, count: 0 }),
+    },
+
+    maxQuantity: {
+      type: Number,
+      default: 99,
+      min: 1,
     },
 
     status: {

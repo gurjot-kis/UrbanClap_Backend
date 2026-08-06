@@ -12,9 +12,14 @@ const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "365d";
 const signAuthToken = (user) => {
   // Payload matches the keys you showed: `user_id`, `email`.
   return jwt.sign(
-    { user_id: user.user_id, email: user.email, role: user.role || "User" },
+    {
+      _id: user._id.toString(),
+      user_id: user.user_id,
+      email: user.email,
+      role: user.role || "User",
+    },
     JWT_SECRET,
-    { algorithm: "HS256", expiresIn: JWT_EXPIRES_IN }
+    { algorithm: "HS256", expiresIn: JWT_EXPIRES_IN },
   );
 };
 
@@ -37,9 +42,16 @@ const findUserByPhone = async (rawPhone) => {
 
 const phoneToE164 = (rawPhone) => {
   const d = digitsOnly(rawPhone);
-  const cc = String(process.env.TWILIO_DEFAULT_COUNTRY_CODE || "91").replace(/\D/g, "");
+  const cc = String(process.env.TWILIO_DEFAULT_COUNTRY_CODE || "91").replace(
+    /\D/g,
+    "",
+  );
   if (!d) return "";
-  if (String(rawPhone || "").trim().startsWith("+")) {
+  if (
+    String(rawPhone || "")
+      .trim()
+      .startsWith("+")
+  ) {
     return `+${d}`;
   }
   if (d.length === 10) return `+${cc}${d}`;
@@ -48,6 +60,7 @@ const phoneToE164 = (rawPhone) => {
 
 const buildAuthResponseData = (user, token) => {
   return {
+    _id: user._id.toString(),
     user_id: user.user_id,
     name: user.name,
     email: user.email,
@@ -72,7 +85,7 @@ const sendLoginTwilioOtpToUser = async (user, phone) => {
   try {
     const result = await sendTwilioSms(
       to,
-      `Your login OTP is ${otp}. It is valid for 10 minutes. Do not share this code.`
+      `Your login OTP is ${otp}. It is valid for 10 minutes. Do not share this code.`,
     );
 
     if (!result.sent) {
@@ -85,7 +98,8 @@ const sendLoginTwilioOtpToUser = async (user, phone) => {
     user.loginTwilioOtp = null;
     user.loginTwilioOtpExpiry = null;
     await user.save();
-    if (e?.message === "SMS could not be sent. Check Twilio configuration.") throw e;
+    if (e?.message === "SMS could not be sent. Check Twilio configuration.")
+      throw e;
     throw new Error(e?.message || "Failed to send SMS");
   }
 
@@ -266,7 +280,9 @@ export const AuthService = {
       throw new Error("Password must be at least 6 characters");
     }
 
-    const user = await User.findOne({ resetToken: String(resetToken).trim() }).exec();
+    const user = await User.findOne({
+      resetToken: String(resetToken).trim(),
+    }).exec();
     if (!user) throw new Error("Invalid or expired reset token");
     if (!user.resetTokenExpiry || new Date() > user.resetTokenExpiry) {
       throw new Error("Invalid or expired reset token");
@@ -370,4 +386,3 @@ export const AuthService = {
 };
 
 export default AuthService;
-

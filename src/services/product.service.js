@@ -19,13 +19,15 @@ const mapProduct = (p) => ({
   vendor_id: p.vendor_id,
   basePrice: p.basePrice,
   variantLabel: p.variantLabel,
-  variants: (p.variants || []).map(({ label, price, image }) => ({
+  variants: (p.variants || []).map(({key, label, price, image }) => ({
+    key,
     label,
     price,
     image,
   })),
   durationMinutes: p.durationMinutes,
   rating: p.rating,
+  maxQuantity: p.maxQuantity,
   status: p.status,
   createdAt: p.createdAt,
   updatedAt: p.updatedAt,
@@ -44,6 +46,17 @@ const slugify = (str) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)+/g, "");
 
+const slugifyVariant = (str) =>
+  String(str)
+    .toLowerCase()
+    .trim()
+    .replace(/</g, "under-")
+    .replace(/>/g, "over-")
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+
 const parseMaybeJSON = (value, fieldName) => {
   if (value === undefined || value === null || value === "") return undefined;
   if (typeof value !== "string") return value;
@@ -52,6 +65,22 @@ const parseMaybeJSON = (value, fieldName) => {
   } catch {
     throw new Error(`Invalid ${fieldName} format`);
   }
+};
+
+const buildVariantKey = (label, existingKey, seenKeys) => {
+  if (existingKey && existingKey.trim()) {
+    seenKeys.add(existingKey.trim());
+    return existingKey.trim();
+  }
+
+  const base = slugifyVariant(label);
+  let finalKey = base;
+  let suffix = 2;
+  while (seenKeys.has(finalKey)) {
+    finalKey = `${base}-${suffix++}`;
+  }
+  seenKeys.add(finalKey);
+  return finalKey;
 };
 
 export const ProductService = {
@@ -282,15 +311,17 @@ export const ProductService = {
     if (!Array.isArray(parsedVariants))
       throw new Error("Invalid variants format");
 
-    // ✅ Map imageIndex → actual uploaded file path
+    const seenKeys = new Set();
+
     const normalizedVariants = parsedVariants.map((v) => {
       const imageIndex = v.imageIndex ?? null;
       const image =
         imageIndex !== null && variantImagePaths[imageIndex]
           ? variantImagePaths[imageIndex]
-          : (v.image ?? null); // fallback: URL string if passed directly
+          : (v.image ?? null);
 
       return {
+        key: buildVariantKey(v.label, v.key, seenKeys),
         label: v.label,
         price: Number(v.price),
         costPrice: Number(v.costPrice),
@@ -428,46 +459,56 @@ export const ProductService = {
     // VARIANT HANDLING
     // ────────────────────────────────────────────────────────────────────────
 
-    let finalVariants = existing.variants; // default: keep everything as-is
+    let finalVariants = existing.variants;
 
     if (variants !== undefined) {
       const parsedVariants = parseMaybeJSON(variants, "variants");
       if (!Array.isArray(parsedVariants))
         throw new Error("Invalid variants format");
 
-      // Build a map of existing variants keyed by lowercase label for fast lookup
+      // Map existing variants by their stable `key`, not by label
       const existingVariantMap = new Map(
-        existing.variants.map((v) => [v.label.toLowerCase(), v]),
+        existing.variants.map((v) => [v.key, v]),
       );
 
       const updatedMap = new Map(
-        existing.variants.map((v) => [v.label.toLowerCase(), { ...v }]),
+        existing.variants.map((v) => [v.key, { ...v }]),
       );
 
-      for (const incoming of parsedVariants) {
-        const key = String(incoming.label).toLowerCase();
-        const existingVariant = existingVariantMap.get(key);
+      const seenKeys = new Set(existing.variants.map((v) => v.key));
 
-        // Resolve image for this incoming variant
+      for (const incoming of parsedVariants) {
+        // Match on incoming.key if provided (editing existing variant),
+        // otherwise treat as a brand-new variant.
+        const matchKey =
+          incoming.key && existingVariantMap.has(incoming.key)
+            ? incoming.key
+            : null;
+
+        const existingVariant = matchKey
+          ? existingVariantMap.get(matchKey)
+          : null;
+
         let image;
         if (incoming.imageIndex !== null && incoming.imageIndex !== undefined) {
-          // New file uploaded for this variant
           image =
             variantImagePaths[incoming.imageIndex] ??
             existingVariant?.image ??
             null;
         } else if (existingVariant) {
-          // No new image → keep old image
           image = existingVariant.image ?? null;
         } else {
-          // Brand new variant with no image
           image = incoming.image ?? null;
         }
 
         if (existingVariant) {
-          // ── Matched: update only provided fields ──
-          updatedMap.set(key, {
-            label: existingVariant.label, // label is the key, keep original casing
+          // ── Matched by key: update fields, key never changes ──
+          updatedMap.set(existingVariant.key, {
+            key: existingVariant.key, // stable — never regenerated
+            label:
+              incoming.label !== undefined
+                ? incoming.label
+                : existingVariant.label,
             price:
               incoming.price !== undefined
                 ? Number(incoming.price)
@@ -479,8 +520,14 @@ export const ProductService = {
             image,
           });
         } else {
-          // ── New variant: add it ──
-          updatedMap.set(key, {
+          // ── New variant: generate a fresh, collision-safe key ──
+          const newKey = buildVariantKey(
+            incoming.label,
+            incoming.key,
+            seenKeys,
+          );
+          updatedMap.set(newKey, {
+            key: newKey,
             label: incoming.label,
             price: Number(incoming.price),
             costPrice: Number(incoming.costPrice),
