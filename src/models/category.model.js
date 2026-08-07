@@ -38,6 +38,27 @@ const categorySchema = new mongoose.Schema(
       enum: ["active", "inactive"],
       default: "active",
     },
+
+    slotConfig: {
+      allowInstant: { type: Boolean, default: true },
+      allowSchedule: { type: Boolean, default: true },
+
+      instant: {
+        duration: { type: Number, default: 60 }, // service duration in minutes
+        bufferTime: { type: Number, default: 30 }, // vendor travel/reach buffer
+        searchRadiusKm: { type: Number, default: 10 }, // radius to find nearby vendor
+      },
+
+      schedule: {
+        slotIntervalMinutes: { type: Number, default: 30 },
+        workingHours: {
+          start: { type: String, default: "09:00" },
+          end: { type: String, default: "21:00" },
+        },
+        minAdvanceBookingHours: { type: Number, default: 2 },
+        maxAdvanceBookingDays: { type: Number, default: 15 },
+      },
+    },
   },
   {
     timestamps: true,

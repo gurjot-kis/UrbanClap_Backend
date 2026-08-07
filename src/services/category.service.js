@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import Category from "../models/category.model.js";
 import Product from "../models/product.model.js";
+import { normalizeSlotConfig } from "../helpers/slotConfig.helper.js";
 
 export const CategoryService = {
   getCategoryTree: async () => {
@@ -163,7 +164,13 @@ export const CategoryService = {
     return result[0] || null;
   },
 
-  createCategory: async ({ name, parent_id, description, category_image }) => {
+  createCategory: async ({
+    name,
+    parent_id,
+    description,
+    category_image,
+    slotConfig,
+  }) => {
     let level = 1;
 
     if (parent_id) {
@@ -209,6 +216,7 @@ export const CategoryService = {
       level,
       description,
       category_image,
+      slotConfig: normalizeSlotConfig(slotConfig),
     });
 
     return category;
@@ -216,7 +224,7 @@ export const CategoryService = {
 
   updateCategory: async (
     id,
-    { name, parent_id, description, category_image },
+    { name, parent_id, description, category_image, slotConfig },
   ) => {
     const category = await Category.findById(id);
 
@@ -304,6 +312,13 @@ export const CategoryService = {
     if (description !== undefined) updateData.description = description;
     if (category_image !== undefined)
       updateData.category_image = category_image;
+
+    if (slotConfig !== undefined) {
+      updateData.slotConfig = normalizeSlotConfig(
+        slotConfig,
+        category.slotConfig ? category.slotConfig.toObject() : {},
+      );
+    }
 
     const updated = await Category.findByIdAndUpdate(id, updateData, {
       new: true,

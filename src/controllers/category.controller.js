@@ -55,7 +55,7 @@ export const CategoryController = {
 
   createCategory: async (req, res) => {
     try {
-      const { name, parent_id, description } = req.body;
+      const { name, parent_id, description, slotConfig } = req.body;
 
       if (!name || !name.trim()) {
         return sendError(res, {
@@ -75,11 +75,24 @@ export const CategoryController = {
         ? `/uploads/categories/${req.file.filename}`
         : "";
 
+      let parsedSlotConfig = slotConfig;
+      if (typeof slotConfig === "string") {
+        try {
+          parsedSlotConfig = JSON.parse(slotConfig);
+        } catch {
+          return sendError(res, {
+            code: 400,
+            message: "Invalid slotConfig JSON",
+          });
+        }
+      }
+
       const category = await CategoryService.createCategory({
         name,
         parent_id,
         description,
         category_image,
+        slotConfig: parsedSlotConfig,
       });
 
       return sendSuccess(res, {
@@ -106,7 +119,7 @@ export const CategoryController = {
         });
       }
 
-      const { name, parent_id, description } = req.body;
+      const { name, parent_id, description, slotConfig } = req.body;
 
       if (name !== undefined && !name.trim()) {
         return sendError(res, {
@@ -131,11 +144,24 @@ export const CategoryController = {
         ? `/uploads/categories/${req.file.filename}`
         : undefined;
 
+      let parsedSlotConfig = slotConfig;
+      if (typeof slotConfig === "string") {
+        try {
+          parsedSlotConfig = JSON.parse(slotConfig);
+        } catch {
+          return sendError(res, {
+            code: 400,
+            message: "Invalid slotConfig JSON",
+          });
+        }
+      }
+
       const category = await CategoryService.updateCategory(id, {
         name,
         parent_id,
         description,
         category_image,
+        slotConfig: parsedSlotConfig,
       });
 
       return sendSuccess(res, {

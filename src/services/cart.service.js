@@ -1,6 +1,10 @@
 import Cart from "../models/cart.model.js";
 import Product from "../models/product.model.js";
-import { formatCart } from "../helpers/formatCart.js";
+import resolveDisplayCategories from "../helpers/resolveDisplayCategory.helper.js";
+import {
+  computeCategoryCharges,
+  roundToNearest,
+} from "../helpers/cartTax.helper.js";
 
 const GUEST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -160,18 +164,93 @@ export const CartService = {
 
     const cart = await Cart.findOne(filter).exec();
 
-    if (!cart) {
-      // No cart yet — return an empty cart shape instead of 404,
-      // since "no cart" is a normal state, not an error.
+    if (!cart || cart.items.length === 0) {
       return {
         guestId: guestId ?? undefined,
         totalItems: 0,
-        totalPrice: 0,
-        items: [],
+        itemsSubtotal: 0,
+        grandTotal: 0,
+        categoryGroups: [],
       };
     }
 
-    return formatCart(cart, { guestId: guestId ?? undefined });
+    const productIds = [
+      ...new Set(cart.items.map((i) => i.product_id.toString())),
+    ];
+
+    const products = await Product.find({ _id: { $in: productIds } })
+      .select("category_id sub_category_id")
+      .lean()
+      .exec();
+
+    const productCategoryFields = products.map((p) => ({
+      _id: p._id,
+      category_id: p.category_id,
+      sub_category_id: p.sub_category_id,
+    }));
+
+    const categoryResolution = await resolveDisplayCategories(
+      productCategoryFields,
+    );
+
+    const groupsMap = new Map();
+
+    for (const item of cart.items) {
+      const productKey = item.product_id.toString();
+      const resolvedCategory = categoryResolution.get(productKey) || {
+        _id: null,
+        name: "Uncategorized",
+      };
+      const categoryKey = resolvedCategory._id
+        ? String(resolvedCategory._id)
+        : "uncategorized";
+
+      if (!groupsMap.has(categoryKey)) {
+        groupsMap.set(categoryKey, {
+          category_id: resolvedCategory._id,
+          category_name: resolvedCategory.name,
+          items: [],
+        });
+      }
+
+      groupsMap.get(categoryKey).items.push({
+        item_id: item._id,
+        product_id: item.product_id,
+        snapshot: item.snapshot,
+        variant: item.variant,
+        unitPrice: item.unitPrice,
+        quantity: item.quantity,
+        lineTotal: item.lineTotal,
+      });
+    }
+
+    let itemsSubtotal = 0;
+    let grandTotal = 0;
+
+    const categoryGroups = [...groupsMap.values()].map((group) => {
+      const subtotal = group.items.reduce((sum, i) => sum + i.lineTotal, 0);
+      const { charges, categoryTotal } = computeCategoryCharges(subtotal);
+
+      itemsSubtotal += subtotal;
+      grandTotal += categoryTotal;
+
+      return {
+        category_id: group.category_id,
+        category_name: group.category_name,
+        items: group.items,
+        subtotal: roundToNearest(subtotal),
+        charges,
+        categoryTotal,
+      };
+    });
+
+    return {
+      guestId: guestId ?? undefined,
+      totalItems: cart.totalItems,
+      itemsSubtotal: roundToNearest(itemsSubtotal),
+      grandTotal: roundToNearest(grandTotal),
+      categoryGroups,
+    };
   },
 
   removeItem: async ({ user_id, guestId }, { item_id }) => {

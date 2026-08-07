@@ -44,19 +44,39 @@ const UserSchema = new mongoose.Schema(
       index: true,
     },
     profilePicture: { type: String, default: "" },
-    // Optional for social login users (required for local auth).
     passwordHash: { type: String, default: "" },
-    // Forgot-password OTP flow
     resetOtp: { type: String, default: null },
     resetOtpExpiry: { type: Date, default: null },
     resetToken: { type: String, default: null },
     resetTokenExpiry: { type: Date, default: null },
-    // Twilio phone-login OTP (separate from email forgot-password OTP)
     loginTwilioOtp: { type: String, default: null },
     loginTwilioOtpExpiry: { type: Date, default: null },
+
+    // vendor-only fields
+    vendorCategories: [
+      { type: mongoose.Schema.Types.ObjectId, ref: "Category" },
+    ], // categories/skills this vendor can serve
+
+    serviceableAreas: [
+      {
+        pincode: { type: String, trim: true },
+        _id: false,
+      },
+    ],
+
+    currentLocation: {
+      type: { type: String, enum: ["Point"], default: "Point" },
+      coordinates: { type: [Number], default: [0, 0] },
+    },
+
+    isAvailableNow: { type: Boolean, default: false },
+    isVendorVerified: { type: Boolean, default: false },
   },
   { timestamps: true },
 );
+
+UserSchema.index({ currentLocation: "2dsphere" });
+UserSchema.index({ vendorCategories: 1 });
 
 const User = mongoose.model("User", UserSchema);
 

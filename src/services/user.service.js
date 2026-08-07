@@ -7,7 +7,10 @@ import { mapUserStatus, parseUserStatus } from "../utils/user-status.js";
 
 const normalizeName = (value) => String(value).trim();
 const normalizeEmail = (value) => String(value).trim().toLowerCase();
-const normalizeUserId = (value) => String(value ?? "").trim().replace(/^:/, "");
+const normalizeUserId = (value) =>
+  String(value ?? "")
+    .trim()
+    .replace(/^:/, "");
 
 const buildUserResponse = (user) => ({
   user_id: user.user_id,
@@ -15,16 +18,29 @@ const buildUserResponse = (user) => ({
   email: user.email,
   phone: user.phone || "",
   address: user.address || "",
-  latitude: user.latitude != null && Number.isFinite(user.latitude) ? user.latitude : null,
-  longitude: user.longitude != null && Number.isFinite(user.longitude) ? user.longitude : null,
+  latitude:
+    user.latitude != null && Number.isFinite(user.latitude)
+      ? user.latitude
+      : null,
+  longitude:
+    user.longitude != null && Number.isFinite(user.longitude)
+      ? user.longitude
+      : null,
   status: mapUserStatus(user.status),
+  role: user.role,
+  vendorCategories: user.vendorCategories || [],
+  serviceableAreas: user.serviceableAreas || [],
+  currentLocation: user.currentLocation || null,
+  isAvailableNow: !!user.isAvailableNow,
+  isVendorVerified: !!user.isVendorVerified,
 });
 
 const parseLatitude = (value) => {
   if (value === undefined || value === null || value === "") {
     throw new Error("latitude is required");
   }
-  const n = typeof value === "number" ? value : parseFloat(String(value).trim(), 10);
+  const n =
+    typeof value === "number" ? value : parseFloat(String(value).trim(), 10);
   if (!Number.isFinite(n) || n < -90 || n > 90) {
     throw new Error("latitude must be a number between -90 and 90");
   }
@@ -35,11 +51,43 @@ const parseLongitude = (value) => {
   if (value === undefined || value === null || value === "") {
     throw new Error("longitude is required");
   }
-  const n = typeof value === "number" ? value : parseFloat(String(value).trim(), 10);
+  const n =
+    typeof value === "number" ? value : parseFloat(String(value).trim(), 10);
   if (!Number.isFinite(n) || n < -180 || n > 180) {
     throw new Error("longitude must be a number between -180 and 180");
   }
   return n;
+};
+
+const normalizeCoordinates = (currentLocation) => {
+  if (currentLocation === undefined) return undefined;
+
+  const { lat, lng } = currentLocation || {};
+  const latNum = parseLatitude(lat);
+  const lngNum = parseLongitude(lng);
+
+  return {
+    type: "Point",
+    coordinates: [lngNum, latNum],
+  };
+};
+
+const normalizeServiceableAreas = (serviceableAreas) => {
+  if (serviceableAreas === undefined) return undefined;
+  if (!Array.isArray(serviceableAreas)) {
+    throw new Error("serviceableAreas must be an array");
+  }
+  return serviceableAreas.map((item) => ({
+    pincode: String(item.pincode || "").trim(),
+  }));
+};
+
+const normalizeVendorCategories = (vendorCategories) => {
+  if (vendorCategories === undefined) return undefined;
+  if (!Array.isArray(vendorCategories)) {
+    throw new Error("vendorCategories must be an array of category ids");
+  }
+  return vendorCategories;
 };
 
 export const UserService = {
@@ -55,7 +103,11 @@ export const UserService = {
       filter.$or = [{ name: regex }, { email: regex }];
     }
 
-    if (status !== undefined && status !== null && String(status).trim() !== "") {
+    if (
+      status !== undefined &&
+      status !== null &&
+      String(status).trim() !== ""
+    ) {
       filter.status = parseUserStatus(status);
     }
 
@@ -64,7 +116,9 @@ export const UserService = {
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parsedLimit)
-        .select("user_id name email phone address latitude longitude status -_id")
+        .select(
+          "user_id name email phone address latitude longitude status -_id",
+        )
         .lean()
         .exec(),
       User.countDocuments(filter),
@@ -76,8 +130,12 @@ export const UserService = {
       email: u.email,
       phone: u.phone || "",
       address: u.address || "",
-      latitude: u.latitude != null && Number.isFinite(u.latitude) ? u.latitude : null,
-      longitude: u.longitude != null && Number.isFinite(u.longitude) ? u.longitude : null,
+      latitude:
+        u.latitude != null && Number.isFinite(u.latitude) ? u.latitude : null,
+      longitude:
+        u.longitude != null && Number.isFinite(u.longitude)
+          ? u.longitude
+          : null,
       status: mapUserStatus(u.status),
     }));
 
@@ -99,7 +157,10 @@ export const UserService = {
       throw new Error("user_id is required");
     }
 
-    const user = await User.findOne({ user_id: String(user_id).trim(), role: "User" })
+    const user = await User.findOne({
+      user_id: String(user_id).trim(),
+      role: "User",
+    })
       .select("user_id name email phone address latitude longitude status -_id")
       .lean()
       .exec();
@@ -140,7 +201,21 @@ export const UserService = {
   },
 
   // PUT — replace all updatable fields (password optional)
-  updateUser: async ({ user_id, fullName, email, password, phone, address, status }) => {
+  updateUser: async ({
+    user_id,
+    fullName,
+    email,
+    password,
+    phone,
+    address,
+    status,
+    // vendor fields
+    vendorCategories,
+    serviceableAreas,
+    currentLocation,
+    isAvailableNow,
+    isVendorVerified,
+  }) => {
     if (!user_id) {
       throw new Error("user_id is required");
     }
@@ -149,7 +224,9 @@ export const UserService = {
       throw new Error("fullName and email are required");
     }
 
-    const user = await User.findOne({ user_id: String(user_id).trim(), role: "User" }).exec();
+    const user = await User.findOne({
+      user_id: String(user_id).trim(),
+    }).exec();
     if (!user) {
       throw new Error("User not found");
     }
@@ -176,13 +253,37 @@ export const UserService = {
       user.status = parseUserStatus(status);
     }
 
+    // vendor-only fields — only applied if key is present in payload
+    if (vendorCategories !== undefined) {
+      user.vendorCategories = normalizeVendorCategories(vendorCategories);
+    }
+    if (serviceableAreas !== undefined) {
+      user.serviceableAreas = normalizeServiceableAreas(serviceableAreas);
+    }
+    if (currentLocation !== undefined) {
+      user.currentLocation = normalizeCoordinates(currentLocation);
+    }
+    if (isAvailableNow !== undefined) {
+      user.isAvailableNow = Boolean(isAvailableNow);
+    }
+    if (isVendorVerified !== undefined) {
+      user.isVendorVerified = Boolean(isVendorVerified);
+    }
+
     await user.save();
 
     return buildUserResponse(user);
   },
 
-  // PATCH — partial update (at least one field required)
-  editUser: async ({ user_id, fullName, email, password, phone, address, status }) => {
+  editUser: async ({
+    user_id,
+    fullName,
+    email,
+    password,
+    phone,
+    address,
+    status,
+  }) => {
     if (!user_id) {
       throw new Error("user_id is required");
     }
@@ -195,10 +296,15 @@ export const UserService = {
       address === undefined &&
       status === undefined
     ) {
-      throw new Error("At least one of fullName, email, password, phone, address, or status is required");
+      throw new Error(
+        "At least one of fullName, email, password, phone, address, or status is required",
+      );
     }
 
-    const user = await User.findOne({ user_id: String(user_id).trim(), role: "User" }).exec();
+    const user = await User.findOne({
+      user_id: String(user_id).trim(),
+      role: "User",
+    }).exec();
     if (!user) {
       throw new Error("User not found");
     }
@@ -250,7 +356,10 @@ export const UserService = {
     const lat = parseLatitude(latitude);
     const lng = parseLongitude(longitude);
 
-    const user = await User.findOne({ user_id: String(user_id).trim(), role: "User" }).exec();
+    const user = await User.findOne({
+      user_id: String(user_id).trim(),
+      role: "User",
+    }).exec();
     if (!user) {
       throw new Error("User not found");
     }

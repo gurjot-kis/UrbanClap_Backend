@@ -5,11 +5,6 @@ import { authorizeRoles, ROLES } from "../middlewares/role.middleware.js";
 
 const router = express.Router();
 
-/**
- * User status: 1 = Active, 0 = Inactive
- * List filter: GET /users?status=0|1
- */
-
 router.patch(
   "/user/location",
   authMiddleware,
@@ -41,7 +36,7 @@ router.get(
 router.put(
   "/users/:user_id",
   authMiddleware,
-  authorizeRoles(ROLES.SUPER_ADMIN),
+  // authorizeRoles(ROLES.SUPER_ADMIN),
   UserController.updateUser
 );
 
