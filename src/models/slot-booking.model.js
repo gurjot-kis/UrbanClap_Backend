@@ -3,7 +3,6 @@ const { Schema } = mongoose;
 
 const slotBookingSchema = new Schema(
   {
-    // who booked
     user: {
       type: Schema.Types.ObjectId,
       ref: "User",
@@ -11,7 +10,6 @@ const slotBookingSchema = new Schema(
       index: true,
     },
 
-    // what's booked
     product_id: {
       type: Schema.Types.ObjectId,
       ref: "Product",
@@ -29,22 +27,19 @@ const slotBookingSchema = new Schema(
       default: null,
     },
 
-    // selected variant (from Product.variants), snapshot pricing
     variant: {
       key: { type: String, default: null },
       label: { type: String, default: null },
       price: { type: Number, default: null },
     },
 
-    // who fulfills it
     vendor_id: {
       type: Schema.Types.ObjectId,
-      ref: "User", // role: Vendor
+      ref: "User", 
       default: null,
       index: true,
     },
 
-    // === slot type ===
     slotType: {
       type: String,
       enum: ["instant", "schedule"],
@@ -69,13 +64,12 @@ const slotBookingSchema = new Schema(
       assignedAt: { type: Date, default: null },
     },
 
-    duration: { type: Number, required: true }, // minutes, snapshot
+    duration: { type: Number, required: true }, 
 
-    // === location — this is what enables "fetch slot location-wise" ===
     address_id: {
       type: Schema.Types.ObjectId,
       ref: "Address",
-      default: null, // null if custom one-off location entered at booking time
+      default: null, 
     },
     serviceAddress: {
       contactName: { type: String, required: true },
@@ -89,10 +83,9 @@ const slotBookingSchema = new Schema(
     },
     location: {
       type: { type: String, enum: ["Point"], default: "Point" },
-      coordinates: { type: [Number], required: true }, // [lng, lat]
+      coordinates: { type: [Number], required: true }, 
     },
 
-    // === pricing snapshot ===
     basePrice: { type: Number, required: true },
     totalAmount: { type: Number, required: true },
     quantity: { type: Number, default: 1, min: 1 },
@@ -100,8 +93,8 @@ const slotBookingSchema = new Schema(
     status: {
       type: String,
       enum: [
-        "pending",              // instant: searching for vendor
-        "confirmed",            // vendor assigned / slot locked
+        "pending",             
+        "confirmed",            
         "vendor_on_way",
         "in_progress",
         "completed",
@@ -123,8 +116,7 @@ const slotBookingSchema = new Schema(
       default: null,
     },
 
-    otp: { type: String, default: null }, // service-start verification
-
+    otp: { type: String, default: null }, 
     cancellation: {
       cancelledBy: { type: String, enum: ["user", "vendor", "admin"], default: null },
       reason: { type: String, default: null },
@@ -142,7 +134,7 @@ const slotBookingSchema = new Schema(
 );
 
 // Indexes
-slotBookingSchema.index({ location: "2dsphere" }); // location-wise slot/booking fetch
+slotBookingSchema.index({ location: "2dsphere" }); 
 slotBookingSchema.index({ user: 1, status: 1 });
 slotBookingSchema.index({ vendor_id: 1, "scheduleDetails.date": 1 });
 slotBookingSchema.index({ status: 1, slotType: 1 });

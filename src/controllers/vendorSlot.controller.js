@@ -31,7 +31,7 @@ export const getAllVendorSlots = async (req, res) => {
         success: true,
         statusCode: 200,
         message: "Slots fetched successfully",
-        data: result.slots,
+        data: result.data,
         pagination: result.pagination,
       });
   } catch (err) {

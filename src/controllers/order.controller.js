@@ -1,158 +1,110 @@
-import { OrderService } from "../services/order.service.js";
-import { ROLES } from "../middlewares/role.middleware.js";
+import * as orderService from "../services/order.service.js";
 
-const sendError = (res, code, message) => {
-  return res.status(code).json({
-    success: false,
-    code,
-    message,
-    data: null,
-  });
+export async function initiateOrder(req, res, next) {
+  try {
+    const userId = req.user._id;
+    const { address_id, slotBooking_id, couponCode, notes } = req.body;
+
+    const order = await orderService.initiateOrder(userId, {
+      address_id,
+      slotBooking_id,
+      couponCode,
+      notes,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Order created. Please confirm a payment method to place it.",
+      data: order,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getMyOrders(req, res, next) {
+  try {
+    const userId = req.user._id;
+    const { status, page, limit } = req.query;
+
+    const result = await orderService.getUserOrders(userId, {
+      status,
+      page,
+      limit,
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: result.orders,
+      pagination: result.pagination,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getOrderById(req, res, next) {
+  try {
+    const userId = req.user._id;
+    const { id } = req.params;
+    const isAdmin = req.user.role === "SuperAdmin";
+
+    const order = await orderService.getOrderById(userId, id, { isAdmin });
+
+    return res.status(200).json({ success: true, data: order });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function cancelOrder(req, res, next) {
+  try {
+    const userId = req.user._id;
+    const { id } = req.params;
+    const { reason } = req.body;
+
+    const order = await orderService.cancelOrder(userId, id, { reason });
+
+    return res.status(200).json({
+      success: true,
+      message: "Order cancelled",
+      data: order,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function updateOrderStatus(req, res, next) {
+  try {
+    const { id } = req.params;
+    const { status, note } = req.body;
+
+    if (!status) {
+      return res
+        .status(400)
+        .json({ success: false, message: "status is required" });
+    }
+
+    const order = await orderService.updateOrderStatus(id, status, {
+      note,
+      actor: req.user.role === "Vendor" ? "vendor" : "admin",
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `Order status updated to "${status}"`,
+      data: order,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export default {
+  initiateOrder,
+  getMyOrders,
+  getOrderById,
+  cancelOrder,
+  updateOrderStatus,
 };
-
-export const OrderController = {
-  placeOrder: async (req, res) => {
-    try {
-      const user_id = req.user?.user_id;
-      const { address_id, paymentMethod } = req.body || {};
-      const data = await OrderService.placeOrder({ user_id, address_id, paymentMethod });
-      return res.status(201).json({
-        success: true,
-        code: 201,
-        message: "Order placed successfully",
-        data,
-      });
-    } catch (err) {
-      const message = err?.message || "Unable to place order";
-      if (message === "Address not found") {
-        return sendError(res, 404, message);
-      }
-      return sendError(res, 400, message);
-    }
-  },
-
-  listUserOrders: async (req, res) => {
-    try {
-      const user_id = req.user?.user_id;
-      const data = await OrderService.listUserOrders({ user_id });
-      return res.status(200).json({
-        success: true,
-        code: 200,
-        message: "Orders fetched successfully",
-        data,
-      });
-    } catch (err) {
-      const message = err?.message || "Unable to fetch orders";
-      return sendError(res, 400, message);
-    }
-  },
-
-  getUserOrderById: async (req, res) => {
-    try {
-      const user_id = req.user?.user_id;
-      const { order_id } = req.params || {};
-      const data = await OrderService.getUserOrderById({ user_id, order_id });
-      return res.status(200).json({
-        success: true,
-        code: 200,
-        message: "Order fetched successfully",
-        data,
-      });
-    } catch (err) {
-      const message = err?.message || "Unable to fetch order";
-      if (message === "Order not found") {
-        return sendError(res, 404, message);
-      }
-      return sendError(res, 400, message);
-    }
-  },
-
-  cancelUserOrder: async (req, res) => {
-    try {
-      const user_id = req.user?.user_id;
-      const { order_id } = req.params || {};
-      const data = await OrderService.cancelUserOrder({ user_id, order_id });
-      return res.status(200).json({
-        success: true,
-        code: 200,
-        message: "Order cancelled successfully",
-        data,
-      });
-    } catch (err) {
-      const message = err?.message || "Unable to cancel order";
-      if (message === "Order not found") {
-        return sendError(res, 404, message);
-      }
-      return sendError(res, 400, message);
-    }
-  },
-
-  listAdminOrders: async (req, res) => {
-    try {
-      const { status, search, page, limit } = req.query || {};
-      const query = { status, search, page, limit, user_id: req.query?.user_id, role: req.query?.role };
-      if (req.user?.role === ROLES.VENDOR) {
-        query.user_id = req.user.user_id;
-        query.role = ROLES.VENDOR;
-      }
-      const { orders, pagination } = await OrderService.listAdminOrders({
-        ...query,
-      });
-      return res.status(200).json({
-        success: true,
-        code: 200,
-        message: "Orders fetched successfully",
-        data: orders,
-        pagination,
-      });
-    } catch (err) {
-      const message = err?.message || "Unable to fetch orders";
-      return sendError(res, 400, message);
-    }
-  },
-
-  getAdminOrderById: async (req, res) => {
-    try {
-      const { order_id } = req.params || {};
-      const data = await OrderService.getAdminOrderById({ order_id });
-      return res.status(200).json({
-        success: true,
-        code: 200,
-        message: "Order fetched successfully",
-        data,
-      });
-    } catch (err) {
-      const message = err?.message || "Unable to fetch order";
-      if (message === "Order not found") {
-        return sendError(res, 404, message);
-      }
-      return sendError(res, 400, message);
-    }
-  },
-
-  updateOrderStatus: async (req, res) => {
-    try {
-      const { order_id } = req.params || {};
-      const { status, paymentReceived } = req.body || {};
-      const data = await OrderService.updateOrderStatus({
-        order_id,
-        status,
-        paymentReceived,
-      });
-      return res.status(200).json({
-        success: true,
-        code: 200,
-        message: "Order status updated successfully",
-        data,
-      });
-    } catch (err) {
-      const message = err?.message || "Unable to update order status";
-      if (message === "Order not found") {
-        return sendError(res, 404, message);
-      }
-      return sendError(res, 400, message);
-    }
-  },
-};
-
-export default OrderController;

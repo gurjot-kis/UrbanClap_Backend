@@ -1,59 +1,22 @@
 import express from "express";
-import { OrderController } from "../controllers/order.controller.js";
+import * as orderController from "../controllers/order.controller.js";
 import { authMiddleware } from "../middlewares/auth.middleware.js";
 import { authorizeRoles, ROLES } from "../middlewares/role.middleware.js";
 
 const router = express.Router();
 
-// User order APIs
-router.post(
-  "/orders/place",
-  authMiddleware,
-  authorizeRoles(ROLES.USER),
-  OrderController.placeOrder
-);
+router.use(authMiddleware, authorizeRoles(ROLES.USER));
 
-router.get(
-  "/orders",
-  authMiddleware,
-  authorizeRoles(ROLES.USER),
-  OrderController.listUserOrders
-);
+router.post("/", orderController.initiateOrder); // checkout (COD today)
+router.get("/my", orderController.getMyOrders); // ?status=&page=&limit=
+router.get("/:id", orderController.getOrderById);
+router.patch("/:id/cancel", orderController.cancelOrder);
 
-router.get(
-  "/orders/:order_id",
-  authMiddleware,
-  authorizeRoles(ROLES.USER),
-  OrderController.getUserOrderById
-);
-
+// ---- admin / vendor routes ----
 router.patch(
-  "/orders/:order_id/cancel",
-  authMiddleware,
-  authorizeRoles(ROLES.USER),
-  OrderController.cancelUserOrder
-);
-
-// Admin order APIs
-router.get(
-  "/admin/orders",
-  authMiddleware,
-  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.VENDOR),
-  OrderController.listAdminOrders
-);
-
-router.get(
-  "/admin/orders/:order_id",
-  authMiddleware,
-  authorizeRoles(ROLES.SUPER_ADMIN),
-  OrderController.getAdminOrderById
-);
-
-router.patch(
-  "/admin/orders/:order_id/status",
-  authMiddleware,
-  authorizeRoles(ROLES.SUPER_ADMIN),
-  OrderController.updateOrderStatus
+  "/:id/status",
+  authorizeRoles("SuperAdmin", "Vendor"),
+  orderController.updateOrderStatus,
 );
 
 export default router;
