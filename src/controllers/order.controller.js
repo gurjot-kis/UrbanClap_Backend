@@ -1,3 +1,4 @@
+import { sendSuccess } from "../helpers/response.helper.js";
 import * as orderService from "../services/order.service.js";
 
 export async function initiateOrder(req, res, next) {
@@ -12,8 +13,8 @@ export async function initiateOrder(req, res, next) {
       notes,
     });
 
-    return res.status(201).json({
-      success: true,
+    return sendSuccess(res, {
+      code: 201,
       message: "Order created. Please confirm a payment method to place it.",
       data: order,
     });
@@ -33,8 +34,9 @@ export async function getMyOrders(req, res, next) {
       limit,
     });
 
-    return res.status(200).json({
-      success: true,
+    return sendSuccess(res, {
+      code: 200,
+      message: "Orders fetched successfully",
       data: result.orders,
       pagination: result.pagination,
     });
@@ -51,7 +53,11 @@ export async function getOrderById(req, res, next) {
 
     const order = await orderService.getOrderById(userId, id, { isAdmin });
 
-    return res.status(200).json({ success: true, data: order });
+    return sendSuccess(res, {
+      code: 200,
+      message: "Order fetched successfully",
+      data: order,
+    });
   } catch (err) {
     next(err);
   }
@@ -65,9 +71,9 @@ export async function cancelOrder(req, res, next) {
 
     const order = await orderService.cancelOrder(userId, id, { reason });
 
-    return res.status(200).json({
-      success: true,
-      message: "Order cancelled",
+    return sendSuccess(res, {
+      code: 200,
+      message: "Order cancelled successfully",
       data: order,
     });
   } catch (err) {
@@ -81,9 +87,10 @@ export async function updateOrderStatus(req, res, next) {
     const { status, note } = req.body;
 
     if (!status) {
-      return res
-        .status(400)
-        .json({ success: false, message: "status is required" });
+      return sendError(res, {
+        code: 400,
+        message: "status is required",
+      });
     }
 
     const order = await orderService.updateOrderStatus(id, status, {
@@ -91,10 +98,36 @@ export async function updateOrderStatus(req, res, next) {
       actor: req.user.role === "Vendor" ? "vendor" : "admin",
     });
 
-    return res.status(200).json({
-      success: true,
+    return sendSuccess(res, {
+      code: 200,
       message: `Order status updated to "${status}"`,
-      data: order,
+      data: {
+        _id: order._id,
+        status: order.status,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getAllOrdersAdmin(req, res, next) {
+  try {
+    const { status, paymentStatus, search, page, limit } = req.query;
+
+    const result = await orderService.getAllOrdersAdmin({
+      status,
+      paymentStatus,
+      search,
+      page,
+      limit,
+    });
+
+    return sendSuccess(res, {
+      code: 200,
+      message: "Orders fetched successfully",
+      data: result.orders,
+      pagination: result.pagination,
     });
   } catch (err) {
     next(err);

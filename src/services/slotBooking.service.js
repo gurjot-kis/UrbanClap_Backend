@@ -17,11 +17,19 @@ const DAY_NAMES = [
   "Saturday",
 ];
 
-const resolveProductPricing = (product, variantKey, quantity) => {
+// === helpers ===
+
+const resolveLineItem = (product, variantKey, quantity) => {
   if (quantity > product.maxQuantity) {
     throw {
       statusCode: 400,
-      message: `Quantity cannot exceed ${product.maxQuantity} for this product`,
+      message: `Quantity cannot exceed ${product.maxQuantity} for "${product.name}"`,
+    };
+  }
+  if (product.variants?.length > 0 && !variantKey) {
+    throw {
+      statusCode: 400,
+      message: `Please select a ${product.variantLabel || "variant"} for "${product.name}"`,
     };
   }
 
@@ -30,20 +38,26 @@ const resolveProductPricing = (product, variantKey, quantity) => {
 
   if (variantKey) {
     variant = product.variants.find((v) => v.key === variantKey);
-    if (!variant)
+    if (!variant) {
       throw {
         statusCode: 400,
-        message: "Invalid variant key for this product",
+        message: `Invalid variant key for "${product.name}"`,
       };
+    }
     unitPrice = variant.price;
   }
 
   return {
+    product_id: product._id,
     variant: variant
       ? { key: variant.key, label: variant.label, price: variant.price }
       : { key: null, label: null, price: null },
     basePrice: unitPrice,
-    totalAmount: unitPrice * quantity,
+    quantity,
+    lineTotal: unitPrice * quantity,
+    duration: product.durationMinutes * quantity,
+    category_id: product.category_id,
+    sub_category_id: product.sub_category_id,
   };
 };
 
@@ -158,60 +172,92 @@ const getCategoryAncestryChain = async (categoryId) => {
   return chain; // [self, parent, grandparent, ...]
 };
 
-// A vendor slot is valid for a product if the slot's category is:
-//  - the product's own category (most specific one it has), OR
+// A vendor slot is valid for a target category if the slot's category is:
+//  - the target's own category, OR
 //  - an ancestor of it (vendor qualified at a broader level), OR
-//  - a descendant of it (slot seeded more specifically than the product)
-const isSlotCategoryValidForProduct = async (slotCategoryId, product) => {
-  const targetCategoryId = product.sub_category_id || product.category_id;
+//  - a descendant of it (slot seeded more specifically than the target)
+const isSlotCategoryValidForTarget = async (
+  slotCategoryId,
+  targetCategoryId,
+  targetSubCategoryId,
+) => {
+  const target = targetSubCategoryId || targetCategoryId;
 
-  if (String(slotCategoryId) === String(targetCategoryId)) return true;
+  if (String(slotCategoryId) === String(target)) return true;
 
-  const targetChain = await getCategoryAncestryChain(targetCategoryId);
+  const targetChain = await getCategoryAncestryChain(target);
   if (targetChain.includes(String(slotCategoryId))) return true;
 
   const slotChain = await getCategoryAncestryChain(slotCategoryId);
-  if (slotChain.includes(String(targetCategoryId))) return true;
-
-  return false;
+  return slotChain.includes(String(target));
 };
+
+// === CREATE ===
+// payload.cartItems = [{ product_id, variantKey, quantity }], all items must share one category
 
 export const createSlotBooking = async (userId, payload) => {
   const {
-    product_id,
-    variantKey,
+    cartItems,
     slotType,
     address_id,
     serviceAddress: rawServiceAddress,
     location: rawLocation,
-    quantity = 1,
     slotId,
   } = payload;
 
   if (!isValidObjectId(userId))
     throw { statusCode: 401, message: "Unauthorized" };
-  if (!isValidObjectId(product_id))
-    throw { statusCode: 400, message: "Invalid product_id" };
+  if (!Array.isArray(cartItems) || cartItems.length === 0) {
+    throw { statusCode: 400, message: "cartItems must be a non-empty array" };
+  }
   if (!["instant", "schedule"].includes(slotType)) {
     throw {
       statusCode: 400,
       message: "slotType must be 'instant' or 'schedule'",
     };
   }
-
-  const product = await Product.findById(product_id);
-  if (!product || product.status !== "active") {
-    throw { statusCode: 404, message: "Product not found or inactive" };
+  for (const item of cartItems) {
+    if (!isValidObjectId(item.product_id)) {
+      throw { statusCode: 400, message: "Invalid product_id in cartItems" };
+    }
   }
 
-  const category_id = product.category_id;
-  const sub_category_id = product.sub_category_id;
+  const productIds = cartItems.map((i) => i.product_id);
+  const products = await Product.find({
+    _id: { $in: productIds },
+    status: "active",
+  });
+  if (products.length !== new Set(productIds.map(String)).size) {
+    throw {
+      statusCode: 404,
+      message: "One or more products not found or inactive",
+    };
+  }
+  const productMap = new Map(products.map((p) => [String(p._id), p]));
 
-  const { variant, basePrice, totalAmount } = resolveProductPricing(
-    product,
-    variantKey,
-    quantity,
-  );
+  const resolvedItems = cartItems.map((item) => {
+    const product = productMap.get(String(item.product_id));
+    if (!product)
+      throw {
+        statusCode: 404,
+        message: `Product ${item.product_id} not found`,
+      };
+    return resolveLineItem(product, item.variantKey, item.quantity || 1);
+  });
+
+  const categoryIds = new Set(resolvedItems.map((i) => String(i.category_id)));
+  if (categoryIds.size > 1) {
+    throw {
+      statusCode: 400,
+      message: "All items in a single booking must belong to the same category",
+    };
+  }
+
+  const category_id = resolvedItems[0].category_id;
+  const sub_category_id = resolvedItems[0].sub_category_id;
+  const totalAmount = resolvedItems.reduce((sum, i) => sum + i.lineTotal, 0);
+  const totalDuration = resolvedItems.reduce((sum, i) => sum + i.duration, 0);
+
   const { serviceAddress, location } = await resolveServiceAddress(
     userId,
     address_id,
@@ -220,19 +266,24 @@ export const createSlotBooking = async (userId, payload) => {
   );
 
   let bookingData = {
-    user: userId,
-    product_id,
+    user: userId, // from auth middleware, never from payload
+    items: resolvedItems.map(
+      ({ product_id, variant, basePrice, quantity, lineTotal }) => ({
+        product_id,
+        variant,
+        basePrice,
+        quantity,
+        lineTotal,
+      }),
+    ),
     category_id,
     sub_category_id,
-    variant,
     slotType,
-    duration: product.durationMinutes,
+    duration: totalDuration,
     address_id: address_id || null,
     serviceAddress,
     location: { type: "Point", coordinates: location.coordinates },
-    basePrice,
     totalAmount,
-    quantity,
     vendor_id: null,
   };
 
@@ -246,15 +297,16 @@ export const createSlotBooking = async (userId, payload) => {
 
     const claimedSlot = await claimVendorSlot(slotId);
 
-    const validCategory = await isSlotCategoryValidForProduct(
+    const validCategory = await isSlotCategoryValidForTarget(
       claimedSlot.category_id,
-      product,
+      category_id,
+      sub_category_id,
     );
     if (!validCategory) {
       await releaseVendorSlot(claimedSlot._id);
       throw {
         statusCode: 400,
-        message: "Selected slot does not offer this product's category",
+        message: "Selected slot does not offer this category",
       };
     }
 
@@ -275,11 +327,12 @@ export const createSlotBooking = async (userId, payload) => {
       });
       return booking;
     } catch (err) {
-      await releaseVendorSlot(claimedSlot._id);
+      await releaseVendorSlot(claimedSlot._id); // rollback the claim if booking creation failed
       throw err;
     }
   }
 
+  // instant booking — no specific slot to claim yet, vendor gets matched separately
   bookingData.instantDetails = {
     requestedAt: new Date(),
     expectedArrivalTime: null,
@@ -289,6 +342,8 @@ export const createSlotBooking = async (userId, payload) => {
 
   return SlotBooking.create(bookingData);
 };
+
+// === READ ===
 
 export const getAllSlotBookings = async (query) => {
   const {
@@ -349,7 +404,7 @@ export const getAllSlotBookings = async (query) => {
     SlotBooking.find(filter)
       .populate("user", "name email phone")
       .populate("vendor_id", "name email phone")
-      .populate("product_id", "name mainImage")
+      .populate("items.product_id", "name mainImage")
       .populate("category_id", "name")
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -367,6 +422,8 @@ export const getAllSlotBookings = async (query) => {
     },
   };
 };
+
+// === UPDATE ===
 
 export const updateSlotBooking = async (id, payload) => {
   if (!isValidObjectId(id))
@@ -400,26 +457,21 @@ export const updateSlotBooking = async (id, payload) => {
     return booking.save();
   }
 
-  // --- Reschedule (schedule bookings only) ---
-  if (
-    payload.scheduleDetails?.vendorSlotId &&
-    booking.slotType === "schedule"
-  ) {
-    const newSlotId = payload.scheduleDetails.vendorSlotId;
+  // --- Reschedule (schedule bookings only) --- flat "slotId", not nested scheduleDetails
+  if (payload.slotId && booking.slotType === "schedule") {
+    const newSlotId = payload.slotId;
     const currentSlotId = booking.scheduleDetails?.vendorSlotId;
 
     if (!isValidObjectId(newSlotId))
-      throw { statusCode: 400, message: "Invalid vendorSlotId" };
+      throw { statusCode: 400, message: "Invalid slotId" };
 
     if (String(newSlotId) !== String(currentSlotId)) {
       const claimedSlot = await claimVendorSlot(newSlotId);
 
-      const validCategory = await isSlotCategoryValidForProduct(
+      const validCategory = await isSlotCategoryValidForTarget(
         claimedSlot.category_id,
-        {
-          category_id: booking.category_id,
-          sub_category_id: booking.sub_category_id,
-        },
+        booking.category_id,
+        booking.sub_category_id,
       );
       if (!validCategory) {
         await releaseVendorSlot(claimedSlot._id);
@@ -466,6 +518,8 @@ export const updateSlotBooking = async (id, payload) => {
   await booking.save();
   return booking;
 };
+
+// === DELETE ===
 
 export const deleteSlotBooking = async (id, force = false) => {
   if (!isValidObjectId(id))

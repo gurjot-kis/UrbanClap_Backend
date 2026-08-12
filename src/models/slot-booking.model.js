@@ -10,11 +10,25 @@ const slotBookingSchema = new Schema(
       index: true,
     },
 
-    product_id: {
-      type: Schema.Types.ObjectId,
-      ref: "Product",
-      required: true,
-    },
+    items: [
+      {
+        product_id: {
+          type: Schema.Types.ObjectId,
+          ref: "Product",
+          required: true,
+        },
+        variant: {
+          key: { type: String, default: null },
+          label: { type: String, default: null },
+          price: { type: Number, default: null },
+        },
+        basePrice: { type: Number, required: true },
+        quantity: { type: Number, default: 1, min: 1 },
+        lineTotal: { type: Number, required: true },
+        _id: false,
+      },
+    ],
+
     category_id: {
       type: Schema.Types.ObjectId,
       ref: "Category",
@@ -27,15 +41,9 @@ const slotBookingSchema = new Schema(
       default: null,
     },
 
-    variant: {
-      key: { type: String, default: null },
-      label: { type: String, default: null },
-      price: { type: Number, default: null },
-    },
-
     vendor_id: {
       type: Schema.Types.ObjectId,
-      ref: "User", 
+      ref: "User",
       default: null,
       index: true,
     },
@@ -64,12 +72,11 @@ const slotBookingSchema = new Schema(
       assignedAt: { type: Date, default: null },
     },
 
-    duration: { type: Number, required: true }, 
-
+    duration: { type: Number, required: true },
     address_id: {
       type: Schema.Types.ObjectId,
       ref: "Address",
-      default: null, 
+      default: null,
     },
     serviceAddress: {
       contactName: { type: String, required: true },
@@ -83,18 +90,16 @@ const slotBookingSchema = new Schema(
     },
     location: {
       type: { type: String, enum: ["Point"], default: "Point" },
-      coordinates: { type: [Number], required: true }, 
+      coordinates: { type: [Number], required: true },
     },
 
-    basePrice: { type: Number, required: true },
     totalAmount: { type: Number, required: true },
-    quantity: { type: Number, default: 1, min: 1 },
 
     status: {
       type: String,
       enum: [
-        "pending",             
-        "confirmed",            
+        "pending",
+        "confirmed",
         "vendor_on_way",
         "in_progress",
         "completed",
@@ -116,9 +121,13 @@ const slotBookingSchema = new Schema(
       default: null,
     },
 
-    otp: { type: String, default: null }, 
+    otp: { type: String, default: null },
     cancellation: {
-      cancelledBy: { type: String, enum: ["user", "vendor", "admin"], default: null },
+      cancelledBy: {
+        type: String,
+        enum: ["user", "vendor", "admin"],
+        default: null,
+      },
       reason: { type: String, default: null },
       cancelledAt: { type: Date, default: null },
       refundAmount: { type: Number, default: null },
@@ -130,11 +139,10 @@ const slotBookingSchema = new Schema(
       default: null,
     },
   },
-  { timestamps: true, versionKey: false }
+  { timestamps: true, versionKey: false },
 );
 
-// Indexes
-slotBookingSchema.index({ location: "2dsphere" }); 
+slotBookingSchema.index({ location: "2dsphere" });
 slotBookingSchema.index({ user: 1, status: 1 });
 slotBookingSchema.index({ vendor_id: 1, "scheduleDetails.date": 1 });
 slotBookingSchema.index({ status: 1, slotType: 1 });

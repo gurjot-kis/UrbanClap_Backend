@@ -5,7 +5,7 @@ const vendorSlotSchema = new Schema(
   {
     vendor_id: {
       type: Schema.Types.ObjectId,
-      ref: "User", // role: Vendor
+      ref: "User",
       required: true,
       index: true,
     },
@@ -18,17 +18,16 @@ const vendorSlotSchema = new Schema(
     },
 
     date: {
-      type: Date, // date-only (00:00 UTC), day info derivable
+      type: Date,
       required: true,
     },
 
-    startTime: { type: String, required: true }, // "14:00"
-    endTime: { type: String, required: true },   // "14:30"
+    startTime: { type: String, required: true },
+    endTime: { type: String, required: true },
 
-    // denormalized vendor location for fast geo search without join
     location: {
       type: { type: String, enum: ["Point"], default: "Point" },
-      coordinates: { type: [Number], required: true }, // [lng, lat]
+      coordinates: { type: [Number], required: true },
     },
 
     status: {
@@ -44,10 +43,13 @@ const vendorSlotSchema = new Schema(
       default: null,
     },
   },
-  { timestamps: true, versionKey: false }
+  { timestamps: true, versionKey: false },
 );
 
-vendorSlotSchema.index({ vendor_id: 1, date: 1, startTime: 1 }, { unique: true });
+vendorSlotSchema.index(
+  { vendor_id: 1, date: 1, startTime: 1 },
+  { unique: true },
+);
 vendorSlotSchema.index({ location: "2dsphere" });
 vendorSlotSchema.index({ category_id: 1, date: 1, status: 1 });
 

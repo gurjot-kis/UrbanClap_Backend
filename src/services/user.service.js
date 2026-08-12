@@ -17,6 +17,8 @@ const buildUserResponse = (user) => ({
   fullName: user.name,
   email: user.email,
   phone: user.phone || "",
+  dob: user.dob || null,
+  anniversaryDate: user.anniversaryDate || null,
   address: user.address || "",
   latitude:
     user.latitude != null && Number.isFinite(user.latitude)
@@ -88,6 +90,23 @@ const normalizeVendorCategories = (vendorCategories) => {
     throw new Error("vendorCategories must be an array of category ids");
   }
   return vendorCategories;
+};
+
+const parseOptionalDate = (value, fieldName) => {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  const date = String(value).trim();
+
+  // DD-MM-YYYY
+  const dateRegex = /^(0[1-9]|[12]\d|3[01])-(0[1-9]|1[0-2])-\d{4}$/;
+
+  if (!dateRegex.test(date)) {
+    throw new Error(`${fieldName} must be in DD-MM-YYYY format`);
+  }
+
+  return date;
 };
 
 export const UserService = {
@@ -200,7 +219,6 @@ export const UserService = {
     return buildUserResponse(user);
   },
 
-  // PUT — replace all updatable fields (password optional)
   updateUser: async ({
     user_id,
     fullName,
@@ -275,73 +293,27 @@ export const UserService = {
     return buildUserResponse(user);
   },
 
-  editUser: async ({
-    user_id,
-    fullName,
-    email,
-    password,
-    phone,
-    address,
-    status,
-  }) => {
+  updateUserStatus: async ({ user_id, status }) => {
     if (!user_id) {
       throw new Error("user_id is required");
     }
 
-    if (
-      !fullName &&
-      !email &&
-      !password &&
-      phone === undefined &&
-      address === undefined &&
-      status === undefined
-    ) {
-      throw new Error(
-        "At least one of fullName, email, password, phone, address, or status is required",
-      );
+    if (status === undefined || status === null || status === "") {
+      throw new Error("status is required");
     }
+
+    const parsedStatus = parseUserStatus(status);
 
     const user = await User.findOne({
       user_id: String(user_id).trim(),
       role: "User",
     }).exec();
+
     if (!user) {
       throw new Error("User not found");
     }
 
-    if (email) {
-      const normalizedEmail = normalizeEmail(email);
-      const duplicate = await User.findOne({
-        email: normalizedEmail,
-        user_id: { $ne: String(user_id).trim() },
-      }).exec();
-
-      if (duplicate) {
-        throw new Error("Email already in use");
-      }
-
-      user.email = normalizedEmail;
-    }
-
-    if (fullName) {
-      user.name = normalizeName(fullName);
-    }
-
-    if (password) {
-      user.passwordHash = await bcrypt.hash(String(password), 10);
-    }
-
-    if (phone !== undefined) {
-      user.phone = String(phone).trim();
-    }
-
-    if (address !== undefined) {
-      user.address = String(address).trim();
-    }
-
-    if (status !== undefined) {
-      user.status = parseUserStatus(status);
-    }
+    user.status = parsedStatus;
 
     await user.save();
 
@@ -390,6 +362,62 @@ export const UserService = {
     ]);
 
     return { user_id: id };
+  },
+
+  updateUserProfile: async ({
+    user_id,
+    name,
+    email,
+    phone,
+    dob,
+    anniversaryDate,
+  }) => {
+    if (!user_id) {
+      throw new Error("user_id is required");
+    }
+
+    if (!name || !email) {
+      throw new Error("name and email are required");
+    }
+
+    const user = await User.findById(user_id).exec();
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    const normalizedEmail = normalizeEmail(email);
+
+    const duplicate = await User.findOne({
+      email: normalizedEmail,
+      user_id: { $ne: String(user_id).trim() },
+    }).exec();
+
+    if (duplicate) {
+      throw new Error("Email already in use");
+    }
+
+    user.name = normalizeName(name);
+    user.email = normalizedEmail;
+
+    if (phone !== undefined) {
+      user.phone = String(phone).trim();
+    }
+
+    if (dob !== undefined) {
+      user.dob = parseOptionalDate(dob, "dob");
+    }
+
+    if (anniversaryDate !== undefined) {
+      user.anniversaryDate = parseOptionalDate(
+        anniversaryDate,
+        "anniversaryDate",
+      );
+    }
+
+    await user.save();
+
+    return buildUserResponse(user);
   },
 };
 

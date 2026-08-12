@@ -5,12 +5,6 @@ import Cart from "../models/cart.model.js";
 import Address from "../models/address.model.js";
 import SlotBooking from "../models/slot-booking.model.js";
 
-/**
- * ORDER SERVICE
- * All business rules live here. Controllers stay thin — they just parse
- * the request, call a service function, and shape the response.
- */
-
 // ---- helpers ---------------------------------------------------------
 
 class AppError extends Error {
@@ -128,6 +122,30 @@ export async function initiateOrder(userId, payload) {
   return order;
 }
 
+// export async function getUserOrders(
+//   userId,
+//   { status, page = 1, limit = 20 } = {},
+// ) {
+//   const query = { user: userId };
+//   if (status) query.status = status;
+
+//   const skip = (Number(page) - 1) * Number(limit);
+
+//   const [orders, total] = await Promise.all([
+//     Order.find(query).sort({ createdAt: -1 }).skip(skip).limit(Number(limit)),
+//     Order.countDocuments(query),
+//   ]);
+
+//   return {
+//     orders,
+//     pagination: {
+//       page: Number(page),
+//       limit: Number(limit),
+//       total,
+//       pages: Math.ceil(total / limit),
+//     },
+//   };
+// }
 export async function getUserOrders(
   userId,
   { status, page = 1, limit = 20 } = {},
@@ -138,12 +156,40 @@ export async function getUserOrders(
   const skip = (Number(page) - 1) * Number(limit);
 
   const [orders, total] = await Promise.all([
-    Order.find(query).sort({ createdAt: -1 }).skip(skip).limit(Number(limit)),
+    Order.find(query)
+      .select(
+        "orderNumber status paymentStatus paymentMethod pricing.grandTotal items.snapshot.name items.snapshot.mainImage items.quantity createdAt deliveredAt",
+      )
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(Number(limit))
+      .lean(),
     Order.countDocuments(query),
   ]);
 
+  const lean = orders.map((o) => {
+    const firstItem = o.items?.[0];
+    return {
+      _id: o._id,
+      orderNumber: o.orderNumber,
+      status: o.status,
+      paymentStatus: o.paymentStatus,
+      paymentMethod: o.paymentMethod,
+      grandTotal: o.pricing?.grandTotal,
+      itemsCount: o.items?.length || 0,
+      previewItem: firstItem
+        ? {
+            name: firstItem.snapshot?.name,
+            image: firstItem.snapshot?.mainImage,
+          }
+        : null,
+      createdAt: o.createdAt,
+      deliveredAt: o.deliveredAt,
+    };
+  });
+
   return {
-    orders,
+    orders: lean,
     pagination: {
       page: Number(page),
       limit: Number(limit),
@@ -253,6 +299,61 @@ export async function updateOrderStatus(
 
   await order.save();
   return order;
+}
+
+export async function getAllOrdersAdmin({
+  status,
+  paymentStatus,
+  search,
+  page = 1,
+  limit = 20,
+} = {}) {
+  const query = {};
+
+  if (status) query.status = status;
+  if (paymentStatus) query.paymentStatus = paymentStatus;
+  if (search) {
+    query.$or = [{ orderNumber: { $regex: search, $options: "i" } }];
+  }
+
+  const skip = (Number(page) - 1) * Number(limit);
+
+  const [orders, total] = await Promise.all([
+    Order.find(query)
+      .select(
+        "orderNumber status paymentStatus paymentMethod pricing.grandTotal user items createdAt",
+      )
+      .populate("user", "name email")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(Number(limit))
+      .lean(),
+    Order.countDocuments(query),
+  ]);
+
+  const formattedOrders = orders.map((o) => ({
+    _id: o._id,
+    orderNumber: o.orderNumber,
+    customer: o.user
+      ? { _id: o.user._id, name: o.user.name, email: o.user.email }
+      : null,
+    totalItems: o.items?.length || 0,
+    grandTotal: o.pricing?.grandTotal || 0,
+    paymentMethod: o.paymentMethod,
+    paymentStatus: o.paymentStatus,
+    status: o.status,
+    createdAt: o.createdAt,
+  }));
+
+  return {
+    orders: formattedOrders,
+    pagination: {
+      page: Number(page),
+      limit: Number(limit),
+      total,
+      pages: Math.ceil(total / Number(limit)),
+    },
+  };
 }
 
 export default {

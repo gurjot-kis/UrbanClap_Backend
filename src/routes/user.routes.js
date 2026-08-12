@@ -9,49 +9,55 @@ router.patch(
   "/user/location",
   authMiddleware,
   authorizeRoles(ROLES.USER),
-  UserController.updateUserLocation
+  UserController.updateUserLocation,
+);
+
+router.put(
+  "/user/profile",
+  authMiddleware,
+  authorizeRoles(ROLES.USER),
+  UserController.updateUserProfile,
 );
 
 router.get(
   "/users",
   authMiddleware,
   authorizeRoles(ROLES.SUPER_ADMIN),
-  UserController.getUsers
+  UserController.getUsers,
 );
 
 router.post(
   "/users",
   authMiddleware,
   authorizeRoles(ROLES.SUPER_ADMIN),
-  UserController.addUser
+  UserController.addUser,
 );
 
 router.get(
   "/users/:user_id",
   authMiddleware,
   authorizeRoles(ROLES.SUPER_ADMIN),
-  UserController.getUserById
+  UserController.getUserById,
 );
 
 router.put(
   "/users/:user_id",
   authMiddleware,
   // authorizeRoles(ROLES.SUPER_ADMIN),
-  UserController.updateUser
+  UserController.updateUser,
 );
 
 router.patch(
-  "/users/:user_id",
+  "/users/:user_id/status",
   authMiddleware,
-  authorizeRoles(ROLES.SUPER_ADMIN),
-  UserController.editUser
+  UserController.updateUserStatusByAdmin,
 );
 
 router.delete(
   "/users/:user_id",
   authMiddleware,
   authorizeRoles(ROLES.SUPER_ADMIN),
-  UserController.deleteUser
+  UserController.deleteUser,
 );
 
 export default router;

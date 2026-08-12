@@ -14,6 +14,7 @@ const ALLOWED_MIME_TYPES = [
   "image/png",
   "image/webp",
   "image/gif",
+  "image/avif",
 ];
 
 const fileFilter = (_req, file, cb) => {

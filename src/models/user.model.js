@@ -20,6 +20,15 @@ const UserSchema = new mongoose.Schema(
     },
     phone: { type: String, default: "" },
     address: { type: String, default: "" },
+    dob: {
+      type: String,
+      default: null,
+    },
+
+    anniversaryDate: {
+      type: String,
+      default: null,
+    },
     latitude: { type: Number, default: null },
     longitude: { type: Number, default: null },
     code: { type: String, default: "", trim: true },

@@ -5,18 +5,23 @@ import { authorizeRoles, ROLES } from "../middlewares/role.middleware.js";
 
 const router = express.Router();
 
-router.use(authMiddleware, authorizeRoles(ROLES.USER));
+router.use(authMiddleware);
 
-router.post("/", orderController.initiateOrder); // checkout (COD today)
-router.get("/my", orderController.getMyOrders); // ?status=&page=&limit=
-router.get("/:id", orderController.getOrderById);
-router.patch("/:id/cancel", orderController.cancelOrder);
+router.post("/", authorizeRoles(ROLES.USER), orderController.initiateOrder);
+router.get("/my-orders", authorizeRoles(ROLES.USER), orderController.getMyOrders);
+router.get("/:id", authorizeRoles(ROLES.USER, ROLES.SUPER_ADMIN), orderController.getOrderById);
+router.patch("/:id/cancel", authorizeRoles(ROLES.USER), orderController.cancelOrder);
 
-// ---- admin / vendor routes ----
 router.patch(
   "/:id/status",
-  authorizeRoles("SuperAdmin", "Vendor"),
+  authorizeRoles(ROLES.SUPER_ADMIN, ROLES.VENDOR),
   orderController.updateOrderStatus,
+);
+
+router.get(
+  "/admin/all",
+  authorizeRoles(ROLES.SUPER_ADMIN),
+  orderController.getAllOrdersAdmin,
 );
 
 export default router;
