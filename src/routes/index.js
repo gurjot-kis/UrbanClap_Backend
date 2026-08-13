@@ -10,7 +10,7 @@ import cartRoutes from "./cart.routes.js";
 import addressRoutes from "./address.routes.js";
 import bannerRoutes from "./banner.routes.js";
 import cartSettingsRoutes from "./cart-settings.routes.js";
-import vendorRoutes from "./vendor/index.js";
+import vendorRoutes from "./vendor.routes.js";
 import vendorSlotRoutes from "./vendorSlot.routes.js";
 import slotBookingRoutes from "./slotBooking.routes.js"
 import orderRoutes from "./order.routes.js"
@@ -33,7 +33,7 @@ router.use("/cart", cartRoutes);
 router.use("/address", addressRoutes);
 router.use(bannerRoutes);
 router.use(cartSettingsRoutes);
-router.use("/vendor", vendorRoutes);
+router.use("/vendors", vendorRoutes);
 router.use("/vendor-slots", vendorSlotRoutes);
 router.use("/slot-booking", slotBookingRoutes);
 router.use("/orders", orderRoutes);

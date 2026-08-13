@@ -1,113 +1,127 @@
 import { VendorService } from "../services/vendor.service.js";
 
-const sendError = (res, code, message) => {
-  return res.status(code).json({
-    success: false,
-    code,
-    message,
-    data: null,
-  });
-};
-
-const updateVendor = async (req, res) => {
-  try {
-    const { vendor_id } = req.params || {};
-    const data = await VendorService.updateVendor({ vendor_id, ...(req.body || {}) });
-    return res.status(200).json({
-      success: true,
-      code: 200,
-      message: "Vendor updated successfully",
-      data,
-    });
-  } catch (err) {
-    const message = err?.message || "Vendor update failed";
-    if (message === "Vendor not found") return sendError(res, 404, message);
-    if (
-      message === "Vendor name already exists" ||
-      message === "Vendor code already exists" ||
-      message === "Email already in use"
-    ) {
-      return sendError(res, 409, message);
-    }
-    return sendError(res, 400, message);
-  }
-};
-
 export const VendorController = {
-  createVendor: async (req, res) => {
+  getVendors: async (req, res) => {
     try {
-      const data = await VendorService.createVendor(req.body || {});
-      return res.status(201).json({
-        success: true,
-        code: 201,
-        message: "Vendor created successfully",
-        data,
-      });
+      const result = await VendorService.getVendors(req.query);
+      res.status(200).json({ success: true, ...result });
     } catch (err) {
-      const message = err?.message || "Vendor creation failed";
-    if (
-      message === "Vendor already exists" ||
-      message === "Vendor code already exists" ||
-      message === "Email already in use"
-    ) {
-      return sendError(res, 409, message);
-    }
-    return sendError(res, 400, message);
-  }
-},
-
-  listVendors: async (req, res) => {
-    try {
-      const { page, limit, search, status } = req.query || {};
-      const { items, pagination } = await VendorService.listVendors({ page, limit, search, status });
-      return res.status(200).json({
-        success: true,
-        code: 200,
-        message: "Vendors fetched successfully",
-        data: items,
-        pagination,
-      });
-    } catch (err) {
-      const message = err?.message || "Unable to fetch vendors";
-      if (message === "status must be 0 or 1") return sendError(res, 400, message);
-      return sendError(res, 500, "Unable to fetch vendors");
+      res.status(500).json({ success: false, message: err.message });
     }
   },
 
   getVendorById: async (req, res) => {
     try {
-      const { vendor_id } = req.params || {};
-      const data = await VendorService.getVendorById({ vendor_id });
-      return res.status(200).json({
-        success: true,
-        code: 200,
-        message: "Vendor fetched successfully",
-        data,
+      const vendor = await VendorService.getVendorById({
+        user_id: req.params.id,
       });
+      res.status(200).json({ success: true, data: vendor });
     } catch (err) {
-      const message = err?.message || "Unable to fetch vendor";
-      if (message === "Vendor not found") return sendError(res, 404, message);
-      return sendError(res, 400, message);
+      res.status(err.message === "Vendor not found" ? 404 : 400).json({
+        success: false,
+        message: err.message,
+      });
     }
   },
 
-  updateVendorPut: updateVendor,
-  updateVendorPatch: updateVendor,
+  addVendor: async (req, res) => {
+    try {
+      const vendor = await VendorService.addVendor(req.body);
+      res.status(201).json({ success: true, data: vendor });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+
+  updateVendor: async (req, res) => {
+    try {
+      const vendor = await VendorService.updateVendor({
+        user_id: req.params.id,
+        ...req.body,
+      });
+      res.status(200).json({ success: true, data: vendor });
+    } catch (err) {
+      res.status(err.message === "Vendor not found" ? 404 : 400).json({
+        success: false,
+        message: err.message,
+      });
+    }
+  },
+
+  updateVendorStatus: async (req, res) => {
+    try {
+      const vendor = await VendorService.updateVendorStatus({
+        user_id: req.params.id,
+        status: req.body.status,
+      });
+      res.status(200).json({ success: true, data: vendor });
+    } catch (err) {
+      res.status(err.message === "Vendor not found" ? 404 : 400).json({
+        success: false,
+        message: err.message,
+      });
+    }
+  },
+
+  updateVendorVerification: async (req, res) => {
+    try {
+      const vendor = await VendorService.updateVendorVerification({
+        user_id: req.params.id,
+        isVendorVerified: req.body.isVendorVerified,
+      });
+      res.status(200).json({ success: true, data: vendor });
+    } catch (err) {
+      res.status(err.message === "Vendor not found" ? 404 : 400).json({
+        success: false,
+        message: err.message,
+      });
+    }
+  },
+
+  updateVendorAvailability: async (req, res) => {
+    try {
+      const vendor = await VendorService.updateVendorAvailability({
+        user_id: req.params.id,
+        isAvailableNow: req.body.isAvailableNow,
+      });
+      res.status(200).json({ success: true, data: vendor });
+    } catch (err) {
+      res.status(err.message === "Vendor not found" ? 404 : 400).json({
+        success: false,
+        message: err.message,
+      });
+    }
+  },
+
+  updateVendorLocation: async (req, res) => {
+    try {
+      const vendor = await VendorService.updateVendorLocation({
+        user_id: req.params.id,
+        latitude: req.body.latitude,
+        longitude: req.body.longitude,
+      });
+      res.status(200).json({ success: true, data: vendor });
+    } catch (err) {
+      res.status(err.message === "Vendor not found" ? 404 : 400).json({
+        success: false,
+        message: err.message,
+      });
+    }
+  },
 
   deleteVendor: async (req, res) => {
     try {
-      const { vendor_id } = req.params || {};
-      const data = await VendorService.deleteVendor({ vendor_id });
-      return res.status(200).json({
-        success: true,
-        code: 200,
-        message: "Vendor deleted successfully",
-        data,
+      const result = await VendorService.deleteVendor({
+        user_id: req.params.id,
       });
+      res
+        .status(200)
+        .json({ success: true, message: "Vendor deleted", data: result });
     } catch (err) {
-      const message = err?.message || "Vendor deletion failed";
-      if (message === "Vendor not found") return sendError(res, 404, message);
-      return sendError(res, 400, message);
+      res.status(err.message === "Vendor not found" ? 404 : 400).json({
+        success: false,
+        message: err.message,
+      });
     }
   },
 };

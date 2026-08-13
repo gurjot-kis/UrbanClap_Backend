@@ -1,138 +1,145 @@
 import bcrypt from "bcryptjs";
 import User from "../models/user.model.js";
-import Warehouse from "../models/warehouse.model.js";
-import WarehouseInventory from "../models/warehouse-inventory.model.js";
+import { mapUserStatus, parseUserStatus } from "../utils/user-status.js";
 
-const VENDOR_ROLE = "Vendor";
+const normalizeName = (value) => String(value).trim();
+const normalizeEmail = (value) => String(value).trim().toLowerCase();
 
-const normalizeString = (value) =>
-  value === undefined || value === null ? "" : String(value).trim();
-
-const normalizeId = (value) => normalizeString(value).replace(/^:/, "");
-
-const normalizeEmail = (value) => normalizeString(value).toLowerCase();
-
-const parseStatus = (value, { defaultValue = 1 } = {}) => {
-  if (value === undefined || value === null || value === "") {
-    return defaultValue;
+const parseLatitude = (value) => {
+  const n =
+    typeof value === "number" ? value : parseFloat(String(value).trim());
+  if (!Number.isFinite(n) || n < -90 || n > 90) {
+    throw new Error("latitude must be a number between -90 and 90");
   }
-  const n = parseInt(String(value).trim(), 10);
-  if (n === 0 || n === 1) {
-    return n;
-  }
-  throw new Error("status must be 0 or 1");
+  return n;
 };
 
-const vendorFilter = (extra = {}) => ({ role: VENDOR_ROLE, ...extra });
+const parseLongitude = (value) => {
+  const n =
+    typeof value === "number" ? value : parseFloat(String(value).trim());
+  if (!Number.isFinite(n) || n < -180 || n > 180) {
+    throw new Error("longitude must be a number between -180 and 180");
+  }
+  return n;
+};
 
-const selectFields =
-  "user_id name code email phone address gst_number status createdAt updatedAt -_id";
+const normalizeCoordinates = (currentLocation) => {
+  if (currentLocation === undefined) return undefined;
+  const { lat, lng } = currentLocation || {};
+  if (lat === undefined || lng === undefined) {
+    throw new Error("currentLocation requires lat and lng");
+  }
+  return {
+    type: "Point",
+    coordinates: [parseLongitude(lng), parseLatitude(lat)],
+  };
+};
 
-const mapVendor = (doc) => ({
-  vendor_id: doc.user_id,
-  name: doc.name,
-  code: doc.code || "",
-  email: doc.email || "",
-  phone: doc.phone || "",
-  address: doc.address || "",
-  gst_number: doc.gst_number || "",
-  status: doc.status === 0 ? 0 : 1,
-  createdAt: doc.createdAt,
-  updatedAt: doc.updatedAt,
+const normalizeServiceableAreas = (serviceableAreas) => {
+  if (serviceableAreas === undefined) return undefined;
+  if (!Array.isArray(serviceableAreas)) {
+    throw new Error("serviceableAreas must be an array");
+  }
+  return serviceableAreas.map((item) => ({
+    pincode: String(item.pincode || "").trim(),
+  }));
+};
+
+const normalizeVendorCategories = (vendorCategories) => {
+  if (vendorCategories === undefined) return undefined;
+  if (!Array.isArray(vendorCategories)) {
+    throw new Error("vendorCategories must be an array of category ids");
+  }
+  return vendorCategories;
+};
+
+const buildVendorResponse = (v) => ({
+  user_id: v.user_id,
+  fullName: v.name,
+  email: v.email,
+  phone: v.phone || "",
+  address: v.address || "",
+  code: v.code || "",
+  gst_number: v.gst_number || "",
+  status: mapUserStatus(v.status),
+  vendorCategories: v.vendorCategories || [],
+  serviceableAreas: v.serviceableAreas || [],
+  currentLocation: v.currentLocation || null,
+  isAvailableNow: !!v.isAvailableNow,
+  isVendorVerified: !!v.isVendorVerified,
+  createdAt: v.createdAt,
 });
 
-const findVendorById = async (vendor_id) => {
-  const id = normalizeId(vendor_id);
-  if (!id) {
-    throw new Error("vendor_id is required");
-  }
-  const doc = await User.findOne(vendorFilter({ user_id: id })).select(selectFields).lean().exec();
-  if (!doc) {
-    throw new Error("Vendor not found");
-  }
-  return doc;
-};
-
 export const VendorService = {
-  createVendor: async ({ name, email, phone, address, gst_number, code, status, password }) => {
-    const normalizedName = normalizeString(name);
-    if (!normalizedName) {
-      throw new Error("name is required");
-    }
-
-    const normalizedEmail = normalizeEmail(email);
-    if (!normalizedEmail) {
-      throw new Error("email is required");
-    }
-
-    const existingEmail = await User.findOne({ email: normalizedEmail }).exec();
-    if (existingEmail) {
-      throw new Error("Vendor already exists");
-    }
-
-    const existingName = await User.findOne(vendorFilter({ name: normalizedName })).exec();
-    if (existingName) {
-      throw new Error("Vendor already exists");
-    }
-
-    const normalizedCode = normalizeString(code);
-    if (normalizedCode) {
-      const codeDuplicate = await User.findOne(vendorFilter({ code: normalizedCode })).exec();
-      if (codeDuplicate) {
-        throw new Error("Vendor code already exists");
-      }
-    }
-
-    const payload = {
-      name: normalizedName,
-      email: normalizedEmail,
-      phone: normalizeString(phone),
-      address: normalizeString(address),
-      gst_number: normalizeString(gst_number),
-      code: normalizedCode,
-      status: parseStatus(status),
-      role: VENDOR_ROLE,
-      passwordHash: "",
-    };
-
-    if (password !== undefined && password !== null && normalizeString(password) !== "") {
-      payload.passwordHash = await bcrypt.hash(String(password), 10);
-    }
-
-    const doc = await User.create(payload);
-    return mapVendor(doc);
-  },
-
-  listVendors: async ({ page = 1, limit = 10, search = "", status } = {}) => {
+  getVendors: async ({
+    page = 1,
+    limit = 10,
+    search = "",
+    status,
+    category,
+    isVendorVerified,
+    isAvailableNow,
+    sortBy = "createdAt",
+    sortOrder = "desc",
+  } = {}) => {
     const parsedPage = Math.max(1, parseInt(page, 10) || 1);
     const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
     const skip = (parsedPage - 1) * parsedLimit;
 
-    const filter = vendorFilter();
-    const normalizedSearch = normalizeString(search);
+    const filter = { role: "Vendor" };
 
-    if (normalizedSearch) {
-      const regex = new RegExp(normalizedSearch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
-      filter.$or = [{ name: regex }, { code: regex }, { email: regex }, { phone: regex }];
+    if (search && String(search).trim()) {
+      const regex = new RegExp(String(search).trim(), "i");
+      filter.$or = [
+        { name: regex },
+        { email: regex },
+        { code: regex },
+        { gst_number: regex },
+      ];
     }
 
-    if (status !== undefined && status !== null && normalizeString(status) !== "") {
-      filter.status = parseStatus(status, { required: true });
+    if (
+      status !== undefined &&
+      status !== null &&
+      String(status).trim() !== ""
+    ) {
+      filter.status = parseUserStatus(status);
     }
 
-    const [rows, total] = await Promise.all([
+    if (category) {
+      filter.vendorCategories = category;
+    }
+
+    if (
+      isVendorVerified !== undefined &&
+      String(isVendorVerified).trim() !== ""
+    ) {
+      filter.isVendorVerified = String(isVendorVerified) === "true";
+    }
+
+    if (isAvailableNow !== undefined && String(isAvailableNow).trim() !== "") {
+      filter.isAvailableNow = String(isAvailableNow) === "true";
+    }
+
+    const allowedSortFields = ["createdAt", "name", "email", "status"];
+    const sortField = allowedSortFields.includes(sortBy) ? sortBy : "createdAt";
+    const sortDir = sortOrder === "asc" ? 1 : -1;
+
+    const [vendors, total] = await Promise.all([
       User.find(filter)
-        .sort({ createdAt: -1 })
+        .sort({ [sortField]: sortDir })
         .skip(skip)
         .limit(parsedLimit)
-        .select(selectFields)
+        .select(
+          "-passwordHash -resetOtp -resetOtpExpiry -resetToken -resetTokenExpiry -loginTwilioOtp -loginTwilioOtpExpiry",
+        )
         .lean()
         .exec(),
       User.countDocuments(filter),
     ]);
 
     return {
-      items: rows.map(mapVendor),
+      vendors: vendors.map(buildVendorResponse),
       pagination: {
         total,
         page: parsedPage,
@@ -144,115 +151,192 @@ export const VendorService = {
     };
   },
 
-  getVendorById: async ({ vendor_id }) => {
-    const doc = await findVendorById(vendor_id);
-    return mapVendor(doc);
+  getVendorById: async ({ user_id }) => {
+    if (!user_id) throw new Error("user_id is required");
+
+    const vendor = await User.findOne({
+      user_id: String(user_id).trim(),
+      role: "Vendor",
+    })
+      .select(
+        "-passwordHash -resetOtp -resetOtpExpiry -resetToken -resetTokenExpiry -loginTwilioOtp -loginTwilioOtpExpiry",
+      )
+      .lean()
+      .exec();
+
+    if (!vendor) throw new Error("Vendor not found");
+    return buildVendorResponse(vendor);
   },
 
-  updateVendor: async ({ vendor_id, name, code, email, phone, address, gst_number, status, password }) => {
-    const id = normalizeId(vendor_id);
-    if (!id) {
-      throw new Error("vendor_id is required");
+  addVendor: async ({
+    fullName,
+    email,
+    password,
+    phone,
+    address,
+    code,
+    gst_number,
+    vendorCategories,
+    serviceableAreas,
+    status,
+  }) => {
+    if (!fullName || !email || !password) {
+      throw new Error("fullName, email, and password are required");
     }
 
-    const hasAnyUpdate =
-      name !== undefined ||
-      code !== undefined ||
-      email !== undefined ||
-      phone !== undefined ||
-      address !== undefined ||
-      gst_number !== undefined ||
-      status !== undefined ||
-      password !== undefined;
+    const normalizedEmail = normalizeEmail(email);
+    const existing = await User.findOne({ email: normalizedEmail }).exec();
+    if (existing) throw new Error("User already exists with this email");
 
-    if (!hasAnyUpdate) {
-      throw new Error("At least one field is required to update");
-    }
+    const passwordHash = await bcrypt.hash(String(password), 10);
 
-    const doc = await User.findOne(vendorFilter({ user_id: id })).exec();
-    if (!doc) {
-      throw new Error("Vendor not found");
-    }
+    const vendor = await User.create({
+      name: normalizeName(fullName),
+      email: normalizedEmail,
+      phone: phone ? String(phone).trim() : "",
+      address: address ? String(address).trim() : "",
+      code: code ? String(code).trim() : "",
+      gst_number: gst_number ? String(gst_number).trim() : "",
+      role: "Vendor",
+      status: parseUserStatus(status),
+      passwordHash,
+      vendorCategories: normalizeVendorCategories(vendorCategories) || [],
+      serviceableAreas: normalizeServiceableAreas(serviceableAreas) || [],
+    });
 
-    if (name !== undefined) {
-      const normalizedName = normalizeString(name);
-      if (!normalizedName) {
-        throw new Error("name cannot be empty");
-      }
-      const duplicate = await User.findOne({
-        ...vendorFilter({ name: normalizedName }),
-        user_id: { $ne: id },
-      }).exec();
-      if (duplicate) {
-        throw new Error("Vendor name already exists");
-      }
-      doc.name = normalizedName;
-    }
-
-    if (code !== undefined) {
-      const normalizedCode = normalizeString(code);
-      if (normalizedCode) {
-        const codeDuplicate = await User.findOne({
-          ...vendorFilter({ code: normalizedCode }),
-          user_id: { $ne: id },
-        }).exec();
-        if (codeDuplicate) {
-          throw new Error("Vendor code already exists");
-        }
-      }
-      doc.code = normalizedCode;
-    }
-
-    if (email !== undefined) {
-      const normalizedEmail = normalizeEmail(email);
-      if (!normalizedEmail) {
-        throw new Error("email cannot be empty");
-      }
-      const emailDuplicate = await User.findOne({
-        email: normalizedEmail,
-        user_id: { $ne: id },
-      }).exec();
-      if (emailDuplicate) {
-        throw new Error("Email already in use");
-      }
-      doc.email = normalizedEmail;
-    }
-
-    if (phone !== undefined) doc.phone = normalizeString(phone);
-    if (address !== undefined) doc.address = normalizeString(address);
-    if (gst_number !== undefined) doc.gst_number = normalizeString(gst_number);
-    if (status !== undefined) doc.status = parseStatus(status, { required: true });
-    if (password !== undefined && password !== null && normalizeString(password) !== "") {
-      doc.passwordHash = await bcrypt.hash(String(password), 10);
-    }
-
-    await doc.save();
-    return mapVendor(doc);
+    return buildVendorResponse(vendor);
   },
 
-  deleteVendor: async ({ vendor_id }) => {
-    const id = normalizeId(vendor_id);
-    if (!id) {
-      throw new Error("vendor_id is required");
+  updateVendor: async ({
+    user_id,
+    fullName,
+    email,
+    password,
+    phone,
+    address,
+    code,
+    gst_number,
+    status,
+    vendorCategories,
+    serviceableAreas,
+    currentLocation,
+  }) => {
+    if (!user_id) throw new Error("user_id is required");
+    if (!fullName || !email) throw new Error("fullName and email are required");
+
+    const vendor = await User.findOne({
+      user_id: String(user_id).trim(),
+      role: "Vendor",
+    }).exec();
+    if (!vendor) throw new Error("Vendor not found");
+
+    const normalizedEmail = normalizeEmail(email);
+    const duplicate = await User.findOne({
+      email: normalizedEmail,
+      user_id: { $ne: String(user_id).trim() },
+    }).exec();
+    if (duplicate) throw new Error("Email already in use");
+
+    vendor.name = normalizeName(fullName);
+    vendor.email = normalizedEmail;
+    if (password) vendor.passwordHash = await bcrypt.hash(String(password), 10);
+    if (phone !== undefined) vendor.phone = String(phone).trim();
+    if (address !== undefined) vendor.address = String(address).trim();
+    if (code !== undefined) vendor.code = String(code).trim();
+    if (gst_number !== undefined) vendor.gst_number = String(gst_number).trim();
+    if (status !== undefined) vendor.status = parseUserStatus(status);
+
+    if (vendorCategories !== undefined) {
+      vendor.vendorCategories = normalizeVendorCategories(vendorCategories);
+    }
+    if (serviceableAreas !== undefined) {
+      vendor.serviceableAreas = normalizeServiceableAreas(serviceableAreas);
+    }
+    if (currentLocation !== undefined) {
+      vendor.currentLocation = normalizeCoordinates(currentLocation);
     }
 
-    const doc = await User.findOne(vendorFilter({ user_id: id })).exec();
-    if (!doc) {
-      throw new Error("Vendor not found");
+    await vendor.save();
+    return buildVendorResponse(vendor);
+  },
+
+  updateVendorStatus: async ({ user_id, status }) => {
+    if (!user_id) throw new Error("user_id is required");
+    if (status === undefined || status === null || status === "") {
+      throw new Error("status is required");
     }
+    const parsedStatus = parseUserStatus(status);
 
-    const warehouses = await Warehouse.find({ vendor_id: id }).select("warehouse_id -_id").lean().exec();
-    const warehouseIds = warehouses.map((w) => w.warehouse_id);
+    const vendor = await User.findOne({
+      user_id: String(user_id).trim(),
+      role: "Vendor",
+    }).exec();
+    if (!vendor) throw new Error("Vendor not found");
 
-    await Promise.all([
-      User.deleteOne({ user_id: id, role: VENDOR_ROLE }),
-      Warehouse.deleteMany({ vendor_id: id }),
-      warehouseIds.length
-        ? WarehouseInventory.deleteMany({ warehouse_id: { $in: warehouseIds } })
-        : Promise.resolve(),
-    ]);
+    vendor.status = parsedStatus;
+    await vendor.save();
+    return buildVendorResponse(vendor);
+  },
 
-    return { vendor_id: id };
+  updateVendorVerification: async ({ user_id, isVendorVerified }) => {
+    if (!user_id) throw new Error("user_id is required");
+    if (isVendorVerified === undefined)
+      throw new Error("isVendorVerified is required");
+
+    const vendor = await User.findOne({
+      user_id: String(user_id).trim(),
+      role: "Vendor",
+    }).exec();
+    if (!vendor) throw new Error("Vendor not found");
+
+    vendor.isVendorVerified = Boolean(isVendorVerified);
+    await vendor.save();
+    return buildVendorResponse(vendor);
+  },
+
+  updateVendorAvailability: async ({ user_id, isAvailableNow }) => {
+    if (!user_id) throw new Error("user_id is required");
+    if (isAvailableNow === undefined)
+      throw new Error("isAvailableNow is required");
+
+    const vendor = await User.findOne({
+      user_id: String(user_id).trim(),
+      role: "Vendor",
+    }).exec();
+    if (!vendor) throw new Error("Vendor not found");
+
+    vendor.isAvailableNow = Boolean(isAvailableNow);
+    await vendor.save();
+    return buildVendorResponse(vendor);
+  },
+
+  updateVendorLocation: async ({ user_id, latitude, longitude }) => {
+    if (!user_id) throw new Error("user_id is required");
+    const lat = parseLatitude(latitude);
+    const lng = parseLongitude(longitude);
+
+    const vendor = await User.findOne({
+      user_id: String(user_id).trim(),
+      role: "Vendor",
+    }).exec();
+    if (!vendor) throw new Error("Vendor not found");
+
+    vendor.currentLocation = { type: "Point", coordinates: [lng, lat] };
+    await vendor.save();
+    return buildVendorResponse(vendor);
+  },
+
+  deleteVendor: async ({ user_id }) => {
+    if (!user_id) throw new Error("user_id is required");
+
+    const vendor = await User.findOne({
+      user_id: String(user_id).trim(),
+      role: "Vendor",
+    }).exec();
+    if (!vendor) throw new Error("Vendor not found");
+
+    await User.deleteOne({ user_id: String(user_id).trim() });
+    return { user_id: String(user_id).trim() };
   },
 };
 
