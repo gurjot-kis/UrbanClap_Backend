@@ -11,7 +11,7 @@ class AppError extends Error {
 const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
 
 const REQUIRED_FIELDS_MSG =
-  "contactName, contactPhone, addressLine1, city, state, country and pincode are required";
+  "addressLine1, city, state, country and pincode are required";
 
 const assertRequiredFields = ({
   contactName,
@@ -22,15 +22,7 @@ const assertRequiredFields = ({
   country,
   pincode,
 }) => {
-  if (
-    !contactName ||
-    !contactPhone ||
-    !addressLine1 ||
-    !city ||
-    !state ||
-    !country ||
-    !pincode
-  ) {
+  if (!addressLine1 || !city || !state || !country || !pincode) {
     throw new AppError(REQUIRED_FIELDS_MSG, 400);
   }
 };
@@ -214,8 +206,8 @@ export const AddressService = {
 
     address.label = label ?? address.label;
     address.customLabel = customLabel ?? address.customLabel;
-    address.contactName = contactName;
-    address.contactPhone = contactPhone;
+    address.contactName = contactName ?? address.contactName;
+    address.contactPhone = contactPhone ?? address.contactPhone;
     address.houseNo = houseNo ?? address.houseNo;
     address.addressLine1 = addressLine1;
     address.addressLine2 = addressLine2 ?? address.addressLine2;

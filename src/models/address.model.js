@@ -24,13 +24,13 @@ const addressSchema = new Schema(
 
     contactName: {
       type: String,
-      required: [true, "Contact name is required"],
+      // required: [true, "Contact name is required"],
       trim: true,
       maxlength: 100,
     },
     contactPhone: {
       type: String,
-      required: [true, "Contact phone is required"],
+      // required: [true, "Contact phone is required"],
       trim: true,
       match: [/^[6-9]\d{9}$/, "Please enter a valid 10-digit phone number"],
     },
