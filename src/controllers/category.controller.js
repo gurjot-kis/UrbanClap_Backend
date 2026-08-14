@@ -21,6 +21,30 @@ export const CategoryController = {
     }
   },
 
+  getAdminCategories: async (req, res) => {
+    try {
+      const { page = 1, limit = 10, search = "", level = "" } = req.query;
+
+      const result = await CategoryService.getAdminCategoryTree({
+        page,
+        limit,
+        search,
+        level,
+      });
+
+      return sendSuccess(res, {
+        message: "Categories fetched successfully",
+        data: result.categories,
+        pagination: result.pagination,
+      });
+    } catch (error) {
+      return sendError(res, {
+        code: error.statusCode || 500,
+        message: error.message,
+      });
+    }
+  },
+
   getCategoryById: async (req, res) => {
     try {
       const { id } = req.params;

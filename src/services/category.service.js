@@ -82,6 +82,291 @@ export const CategoryService = {
     ]);
   },
 
+  getAdminCategoryTree: async ({
+    page = 1,
+    limit = 10,
+    search = "",
+    level = "",
+  }) => {
+    const parsedPage = Math.max(Number(page) || 1, 1);
+    const parsedLimit = Math.max(Number(limit) || 10, 1);
+
+    const skip = (parsedPage - 1) * parsedLimit;
+
+    const match = {};
+
+    // Level filter
+    if (level !== "" && level !== undefined && level !== null) {
+      const parsedLevel = Number(level);
+
+      if (![1, 2, 3].includes(parsedLevel)) {
+        const err = new Error("Invalid category level. Use 1, 2, or 3");
+        err.statusCode = 400;
+        throw err;
+      }
+
+      match.level = parsedLevel;
+    }
+
+    // Search by category name
+    if (search?.trim()) {
+      match.name = {
+        $regex: search.trim(),
+        $options: "i",
+      };
+    }
+
+    // ------------------------------------------
+    // LEVEL 1 / ALL CATEGORIES TREE
+    // ------------------------------------------
+    if (level === "" || Number(level) === 1) {
+      const levelMatch = {
+        ...match,
+        level: 1,
+      };
+
+      const [categories, total] = await Promise.all([
+        Category.aggregate([
+          {
+            $match: levelMatch,
+          },
+
+          {
+            $sort: {
+              createdAt: -1,
+            },
+          },
+
+          {
+            $skip: skip,
+          },
+
+          {
+            $limit: parsedLimit,
+          },
+
+          // Level 2
+          {
+            $lookup: {
+              from: "categories",
+              let: {
+                parentId: "$_id",
+              },
+              pipeline: [
+                {
+                  $match: {
+                    $expr: {
+                      $eq: ["$parent_id", "$$parentId"],
+                    },
+                  },
+                },
+
+                {
+                  $sort: {
+                    createdAt: -1,
+                  },
+                },
+
+                // Level 3
+                {
+                  $lookup: {
+                    from: "categories",
+                    let: {
+                      childId: "$_id",
+                    },
+                    pipeline: [
+                      {
+                        $match: {
+                          $expr: {
+                            $eq: ["$parent_id", "$$childId"],
+                          },
+                        },
+                      },
+
+                      {
+                        $sort: {
+                          createdAt: -1,
+                        },
+                      },
+
+                      {
+                        $project: {
+                          name: 1,
+                          level: 1,
+                          description: 1,
+                          category_image: 1,
+                          status: 1,
+                        },
+                      },
+                    ],
+                    as: "children",
+                  },
+                },
+
+                {
+                  $project: {
+                    name: 1,
+                    level: 1,
+                    description: 1,
+                    category_image: 1,
+                    status: 1,
+                    children: 1,
+                  },
+                },
+              ],
+              as: "children",
+            },
+          },
+
+          {
+            $project: {
+              name: 1,
+              level: 1,
+              description: 1,
+              category_image: 1,
+              status: 1,
+              children: 1,
+            },
+          },
+        ]),
+
+        Category.countDocuments(levelMatch),
+      ]);
+
+      const totalPages = Math.ceil(total / parsedLimit);
+
+      return {
+        categories,
+        pagination: {
+          total,
+          page: parsedPage,
+          limit: parsedLimit,
+          totalPages,
+          hasNextPage: parsedPage < totalPages,
+          hasPrevPage: parsedPage > 1,
+        },
+      };
+    }
+
+    // ------------------------------------------
+    // LEVEL 2
+    // ------------------------------------------
+    if (Number(level) === 2) {
+      const [categories, total] = await Promise.all([
+        Category.aggregate([
+          {
+            $match: match,
+          },
+
+          {
+            $sort: {
+              createdAt: -1,
+            },
+          },
+
+          {
+            $skip: skip,
+          },
+
+          {
+            $limit: parsedLimit,
+          },
+
+          // Level 3 children
+          {
+            $lookup: {
+              from: "categories",
+              let: {
+                parentId: "$_id",
+              },
+              pipeline: [
+                {
+                  $match: {
+                    $expr: {
+                      $eq: ["$parent_id", "$$parentId"],
+                    },
+                  },
+                },
+
+                {
+                  $sort: {
+                    createdAt: -1,
+                  },
+                },
+
+                {
+                  $project: {
+                    name: 1,
+                    level: 1,
+                    description: 1,
+                    category_image: 1,
+                    status: 1,
+                  },
+                },
+              ],
+              as: "children",
+            },
+          },
+
+          {
+            $project: {
+              name: 1,
+              level: 1,
+              description: 1,
+              category_image: 1,
+              status: 1,
+              children: 1,
+            },
+          },
+        ]),
+
+        Category.countDocuments(match),
+      ]);
+
+      const totalPages = Math.ceil(total / parsedLimit);
+
+      return {
+        categories,
+        pagination: {
+          total,
+          page: parsedPage,
+          limit: parsedLimit,
+          totalPages,
+          hasNextPage: parsedPage < totalPages,
+          hasPrevPage: parsedPage > 1,
+        },
+      };
+    }
+
+    // ------------------------------------------
+    // LEVEL 3
+    // ------------------------------------------
+    const [categories, total] = await Promise.all([
+      Category.find(match)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parsedLimit)
+        .select("name level description category_image status")
+        .lean(),
+
+      Category.countDocuments(match),
+    ]);
+
+    const totalPages = Math.ceil(total / parsedLimit);
+
+    return {
+      categories,
+      pagination: {
+        total,
+        page: parsedPage,
+        limit: parsedLimit,
+        totalPages,
+        hasNextPage: parsedPage < totalPages,
+        hasPrevPage: parsedPage > 1,
+      },
+    };
+  },
+
   getCategoryById: async (id) => {
     const categoryId = new mongoose.Types.ObjectId(id);
 
