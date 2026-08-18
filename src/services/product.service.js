@@ -19,11 +19,12 @@ const mapProduct = (p, category = null) => ({
   vendor_id: p.vendor_id,
   basePrice: p.basePrice,
   variantLabel: p.variantLabel,
-  variants: (p.variants || []).map(({ key, label, price, image }) => ({
+  variants: (p.variants || []).map(({ key, label, price,costPrice, image }) => ({
     key,
     label,
     price,
-    image,
+    costPrice,
+    image
   })),
   durationMinutes: p.durationMinutes,
   rating: p.rating,
@@ -298,6 +299,7 @@ export const ProductService = {
       basePrice,
       variantLabel = "",
       variants,
+      variantImageSlots,
       durationMinutes = 0,
       status = "pending",
       slug: slugInput,
@@ -345,29 +347,39 @@ export const ProductService = {
       relativeUploadPath("products", f.filename),
     );
 
-    // ✅ Build variant image path lookup by index
-    const variantImageFiles = files?.variantImages || [];
-    const variantImagePaths = variantImageFiles.map((f) =>
-      relativeUploadPath("products/variants", f.filename),
-    );
-
     // ── Parse JSON-ish fields sent as strings via formdata ──
     const parsedIncludes = parseMaybeJSON(includes, "includes") || [];
     const parsedVariants = parseMaybeJSON(variants, "variants") || [];
+    const parsedVariantImageSlots =
+      parseMaybeJSON(variantImageSlots, "variantImageSlots") || [];
 
     if (!Array.isArray(parsedIncludes))
       throw new Error("Invalid includes format");
     if (!Array.isArray(parsedVariants))
       throw new Error("Invalid variants format");
+    if (!Array.isArray(parsedVariantImageSlots))
+      throw new Error("Invalid variantImageSlots format");
+
+    // Each uploaded file in files.variantImages corresponds, in order, to
+    // the position (in parsedVariants) recorded at the same index in
+    // parsedVariantImageSlots. This is a direct file<->variant map — no
+    // shared pool, no index that can drift.
+    const variantImageFiles = files?.variantImages || [];
+    const variantImageBySlot = new Map();
+    parsedVariantImageSlots.forEach((slot, i) => {
+      const file = variantImageFiles[i];
+      if (file) {
+        variantImageBySlot.set(
+          slot,
+          relativeUploadPath("products/variants", file.filename),
+        );
+      }
+    });
 
     const seenKeys = new Set();
 
-    const normalizedVariants = parsedVariants.map((v) => {
-      const imageIndex = v.imageIndex ?? null;
-      const image =
-        imageIndex !== null && variantImagePaths[imageIndex]
-          ? variantImagePaths[imageIndex]
-          : (v.image ?? null);
+    const normalizedVariants = parsedVariants.map((v, i) => {
+      const image = variantImageBySlot.get(i) ?? v.image ?? null;
 
       return {
         key: buildVariantKey(v.label, v.key, seenKeys),
@@ -429,6 +441,7 @@ export const ProductService = {
       basePrice,
       variantLabel,
       variants,
+      variantImageSlots,
       durationMinutes,
       status,
       slug: slugInput,
@@ -480,114 +493,79 @@ export const ProductService = {
         slug = newSlug;
       }
     }
+// ... inside updateProduct: async (id, body, files = {}) =>
 
-    // ────────────────────────────────────────────────────────────────────────
-    // IMAGE HANDLING
-    // ────────────────────────────────────────────────────────────────────────
+// ── 1. Main Image Handling ──
+const mainImageFile = files?.mainImage?.[0];
+let mainImage = existing.mainImage;
 
-    // ── Main image: use new file if uploaded, else keep existing ──
-    const mainImageFile = files?.mainImage?.[0];
-    const mainImage = mainImageFile
-      ? relativeUploadPath("products", mainImageFile.filename)
-      : existing.mainImage;
+if (mainImageFile) {
+  mainImage = relativeUploadPath("products", mainImageFile.filename);
+} else if (body.existingMainImage !== undefined) {
+  // Retains existing URL/path or sets to null/empty if cleared
+  mainImage = body.existingMainImage || null;
+}
 
-    // ── Featured images: replace all if new files uploaded, else keep existing ──
-    const featuredFiles = files?.featuredImages || [];
-    const images =
-      featuredFiles.length > 0
-        ? featuredFiles.map((f) => relativeUploadPath("products", f.filename))
-        : existing.images;
+// ── 2. Featured Images Handling ──
+// Keep retained existing images sent from frontend + append any newly uploaded files
+const retainedExistingImages = parseMaybeJSON(body.existingFeaturedImages, "existingFeaturedImages") || [];
+const featuredFiles = files?.featuredImages || [];
+const newFeaturedImages = featuredFiles.map((f) => relativeUploadPath("products", f.filename));
 
-    // ── Variant images: build path array from new uploads ──
-    const variantImageFiles = files?.variantImages || [];
-    const variantImagePaths = variantImageFiles.map((f) =>
-      relativeUploadPath("products/variants", f.filename),
-    );
+const images =
+  body.existingFeaturedImages !== undefined || featuredFiles.length > 0
+    ? [...retainedExistingImages, ...newFeaturedImages]
+    : existing.images;
 
-    // ────────────────────────────────────────────────────────────────────────
-    // VARIANT HANDLING
-    // ────────────────────────────────────────────────────────────────────────
+// ── 3. Variant Images Handling ──
+const parsedVariantImageSlots = parseMaybeJSON(variantImageSlots, "variantImageSlots") || [];
+const variantImageFiles = files?.variantImages || [];
+const variantImageBySlot = new Map();
 
-    let finalVariants = existing.variants;
+parsedVariantImageSlots.forEach((slot, i) => {
+  const file = variantImageFiles[i];
+  if (file) {
+    variantImageBySlot.set(slot, relativeUploadPath("products/variants", file.filename));
+  }
+});
 
-    if (variants !== undefined) {
-      const parsedVariants = parseMaybeJSON(variants, "variants");
-      if (!Array.isArray(parsedVariants))
-        throw new Error("Invalid variants format");
+let finalVariants = existing.variants;
 
-      // Map existing variants by their stable `key`, not by label
-      const existingVariantMap = new Map(
-        existing.variants.map((v) => [v.key, v]),
-      );
+if (variants !== undefined) {
+  const parsedVariants = parseMaybeJSON(variants, "variants");
+  if (!Array.isArray(parsedVariants)) throw new Error("Invalid variants format");
 
-      const updatedMap = new Map(
-        existing.variants.map((v) => [v.key, { ...v }]),
-      );
+  const existingVariantMap = new Map(existing.variants.map((v) => [v.key, v]));
+  const seenKeys = new Set(existing.variants.map((v) => v.key));
 
-      const seenKeys = new Set(existing.variants.map((v) => v.key));
+  finalVariants = parsedVariants.map((incoming, i) => {
+    // If a new file is uploaded for this slot, use it;
+    // otherwise use incoming.image (which can be null if removed or a path if kept)
+    const newImage = variantImageBySlot.get(i);
+    const image = newImage !== undefined ? newImage : (incoming.image ?? null);
 
-      for (const incoming of parsedVariants) {
-        // Match on incoming.key if provided (editing existing variant),
-        // otherwise treat as a brand-new variant.
-        const matchKey =
-          incoming.key && existingVariantMap.has(incoming.key)
-            ? incoming.key
-            : null;
+    const existingVariant = incoming.key ? existingVariantMap.get(incoming.key) : null;
 
-        const existingVariant = matchKey
-          ? existingVariantMap.get(matchKey)
-          : null;
-
-        let image;
-        if (incoming.imageIndex !== null && incoming.imageIndex !== undefined) {
-          image =
-            variantImagePaths[incoming.imageIndex] ??
-            existingVariant?.image ??
-            null;
-        } else if (existingVariant) {
-          image = existingVariant.image ?? null;
-        } else {
-          image = incoming.image ?? null;
-        }
-
-        if (existingVariant) {
-          // ── Matched by key: update fields, key never changes ──
-          updatedMap.set(existingVariant.key, {
-            key: existingVariant.key, // stable — never regenerated
-            label:
-              incoming.label !== undefined
-                ? incoming.label
-                : existingVariant.label,
-            price:
-              incoming.price !== undefined
-                ? Number(incoming.price)
-                : existingVariant.price,
-            costPrice:
-              incoming.costPrice !== undefined
-                ? Number(incoming.costPrice)
-                : existingVariant.costPrice,
-            image,
-          });
-        } else {
-          // ── New variant: generate a fresh, collision-safe key ──
-          const newKey = buildVariantKey(
-            incoming.label,
-            incoming.key,
-            seenKeys,
-          );
-          updatedMap.set(newKey, {
-            key: newKey,
-            label: incoming.label,
-            price: Number(incoming.price),
-            costPrice: Number(incoming.costPrice),
-            image,
-          });
-        }
-      }
-
-      finalVariants = Array.from(updatedMap.values());
+    if (existingVariant) {
+      return {
+        key: existingVariant.key,
+        label: incoming.label !== undefined ? incoming.label : existingVariant.label,
+        price: incoming.price !== undefined ? Number(incoming.price) : existingVariant.price,
+        costPrice: incoming.costPrice !== undefined ? Number(incoming.costPrice) : existingVariant.costPrice,
+        image,
+      };
+    } else {
+      const newKey = buildVariantKey(incoming.label, incoming.key, seenKeys);
+      return {
+        key: newKey,
+        label: incoming.label,
+        price: Number(incoming.price),
+        costPrice: Number(incoming.costPrice),
+        image,
+      };
     }
-
+  });
+}
     // ────────────────────────────────────────────────────────────────────────
     // BUILD UPDATE PAYLOAD — only include fields that were actually sent
     // ────────────────────────────────────────────────────────────────────────

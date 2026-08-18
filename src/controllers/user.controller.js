@@ -1,13 +1,5 @@
+import { sendError, sendSuccess } from "../helpers/response.helper.js";
 import { UserService } from "../services/user.service.js";
-
-const sendError = (res, code, message) => {
-  return res.status(code).json({
-    success: false,
-    code,
-    message,
-    data: null,
-  });
-};
 
 export const UserController = {
   getUsers: async (req, res) => {
@@ -19,8 +11,8 @@ export const UserController = {
         search,
         status,
       });
-      return res.status(200).json({
-        success: true,
+
+      return sendSuccess(res, {
         code: 200,
         message: "Users fetched successfully",
         data: users,
@@ -28,9 +20,18 @@ export const UserController = {
       });
     } catch (err) {
       const message = err?.message || "Unable to fetch users";
-      if (message === "status must be 0 or 1")
-        return sendError(res, 400, message);
-      return sendError(res, 500, "Unable to fetch users");
+
+      if (message === "status must be 0 or 1") {
+        return sendError(res, {
+          code: 400,
+          message,
+        });
+      }
+
+      return sendError(res, {
+        code: 500,
+        message: "Unable to fetch users",
+      });
     }
   },
 
@@ -38,7 +39,7 @@ export const UserController = {
     try {
       const { user_id } = req.params || {};
       const data = await UserService.getUserById({ user_id });
-      return res.status(200).json({
+      return sendSuccess(res, {
         success: true,
         code: 200,
         message: "User fetched successfully",
@@ -48,10 +49,16 @@ export const UserController = {
       const message = err?.message || "Unable to fetch user";
 
       if (message === "User not found") {
-        return sendError(res, 404, message);
+        return sendError(res, {
+          code: 404,
+          message,
+        });
       }
 
-      return sendError(res, 400, message);
+      return sendError(res, {
+        code: 400,
+        message,
+      });
     }
   },
 
@@ -67,7 +74,7 @@ export const UserController = {
         address,
         status,
       });
-      return res.status(201).json({
+      return sendSuccess(res, {
         success: true,
         code: 201,
         message: "User created successfully",
@@ -77,10 +84,16 @@ export const UserController = {
       const message = err?.message || "User creation failed";
 
       if (message === "User already exists") {
-        return sendError(res, 409, message);
+        return sendError(res, {
+          code: 409,
+          message,
+        });
       }
 
-      return sendError(res, 400, message);
+      return sendError(res, {
+        code: 400,
+        message,
+      });
     }
   },
 
@@ -114,7 +127,7 @@ export const UserController = {
         isAvailableNow,
         isVendorVerified,
       });
-      return res.status(200).json({
+      return sendSuccess(res, {
         success: true,
         code: 200,
         message: "User updated successfully",
@@ -124,14 +137,23 @@ export const UserController = {
       const message = err?.message || "User update failed";
 
       if (message === "User not found") {
-        return sendError(res, 404, message);
+        return sendError(res, {
+          code: 404,
+          message,
+        });
       }
 
       if (message === "Email already in use") {
-        return sendError(res, 409, message);
+        return sendError(res, {
+          code: 409,
+          message,
+        });
       }
 
-      return sendError(res, 400, message);
+      return sendError(res, {
+        code: 400,
+        message,
+      });
     }
   },
 
@@ -139,7 +161,7 @@ export const UserController = {
     try {
       const { user_id } = req.params || {};
       const data = await UserService.deleteUser({ user_id });
-      return res.status(200).json({
+      return sendSuccess(res, {
         success: true,
         code: 200,
         message: "User deleted successfully",
@@ -149,10 +171,16 @@ export const UserController = {
       const message = err?.message || "User deletion failed";
 
       if (message === "User not found") {
-        return sendError(res, 404, message);
+        return sendError(res, {
+          code: 404,
+          message,
+        });
       }
 
-      return sendError(res, 400, message);
+      return sendError(res, {
+        code: 400,
+        message,
+      });
     }
   },
 
@@ -165,7 +193,8 @@ export const UserController = {
         latitude,
         longitude,
       });
-      return res.status(200).json({
+
+      return sendSuccess(res, {
         success: true,
         code: 200,
         message: "Location updated successfully",
@@ -175,10 +204,16 @@ export const UserController = {
       const message = err?.message || "Location update failed";
 
       if (message === "User not found") {
-        return sendError(res, 404, message);
+        return sendError(res, {
+          code: 404,
+          message,
+        });
       }
 
-      return sendError(res, 400, message);
+      return sendError(res, {
+        code: 400,
+        message,
+      });
     }
   },
 
@@ -197,7 +232,7 @@ export const UserController = {
         anniversaryDate,
       });
 
-      return res.status(200).json({
+      return sendSuccess(res, {
         success: true,
         code: 200,
         message: "Profile updated successfully",
@@ -207,22 +242,23 @@ export const UserController = {
       const message = err?.message || "Profile update failed";
 
       if (message === "User not found") {
-        return sendError(res, 404, message);
+        return sendError(res, {
+          code: 404,
+          message,
+        });
       }
 
       if (message === "Email already in use") {
-        return sendError(res, 409, message);
+        return sendError(res, {
+          code: 409,
+          message,
+        });
       }
 
-      if (
-        message === "name and email are required" ||
-        message === "dob must be a valid date" ||
-        message === "anniversaryDate must be a valid date"
-      ) {
-        return sendError(res, 400, message);
-      }
-
-      return sendError(res, 400, message);
+      return sendError(res, {
+        code: 400,
+        message,
+      });
     }
   },
 
@@ -236,7 +272,7 @@ export const UserController = {
         status,
       });
 
-      return res.status(200).json({
+      return sendSuccess(res, {
         success: true,
         code: 200,
         message: "User status updated successfully",
@@ -246,18 +282,26 @@ export const UserController = {
       const message = err?.message || "User status update failed";
 
       if (message === "User not found") {
-        return sendError(res, 404, message);
+        return sendError(res, {
+          code: 404,
+          message,
+        });
       }
 
-      if (message === "status is required") {
-        return sendError(res, 400, message);
+      if (
+        message === "status is required" ||
+        message === "status must be 0 or 1"
+      ) {
+        return sendError(res, {
+          code: 400,
+          message,
+        });
       }
 
-      if (message === "status must be 0 or 1") {
-        return sendError(res, 400, message);
-      }
-
-      return sendError(res, 400, message);
+      return sendError(res, {
+        code: 400,
+        message,
+      });
     }
   },
 

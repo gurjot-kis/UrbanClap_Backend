@@ -39,14 +39,32 @@ const createStorage = (subfolder) =>
     },
   });
 
+// ✅ fix — each field gets its own storage destination
+const productStorage = multer.diskStorage({
+  destination: (_req, file, cb) => {
+    let subfolder = "products";
+    if (file.fieldname === "variantImages") {
+      subfolder = "products/variants";
+    }
+    const dest = path.join(UPLOADS_ROOT, subfolder);
+    fs.mkdirSync(dest, { recursive: true });
+    cb(null, dest);
+  },
+  filename: (_req, file, cb) => {
+    const uniqueSuffix = crypto.randomUUID();
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, `${uniqueSuffix}${ext}`);
+  },
+});
+
 export const uploadProductImages = multer({
-  storage: createStorage("products"),
+  storage: productStorage,
   fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB per file
+  limits: { fileSize: 5 * 1024 * 1024 },
 }).fields([
   { name: "mainImage", maxCount: 1 },
   { name: "featuredImages", maxCount: 10 },
-  { name: "variantImages", maxCount: 5 },
+  { name: "variantImages", maxCount: 20 }, // ✅ bump to 20 to match max variants
 ]);
 
 export const uploadCategoryImage = multer({
