@@ -1,4 +1,6 @@
 import mongoose from "mongoose";
+import fs from "fs";
+import path from "path";
 import Category from "../models/category.model.js";
 import Product from "../models/product.model.js";
 import { normalizeSlotConfig } from "../helpers/slotConfig.helper.js";
@@ -414,6 +416,8 @@ export const CategoryService = {
                       description: 1,
                       category_image: 1,
                       status: 1,
+                      parent_id: 1,
+                      slotConfig: 1,
                     },
                   },
                 ],
@@ -427,6 +431,8 @@ export const CategoryService = {
                 description: 1,
                 category_image: 1,
                 status: 1,
+                parent_id: 1,
+                slotConfig: 1,
                 children: 1,
               },
             },
@@ -441,6 +447,8 @@ export const CategoryService = {
           description: 1,
           category_image: 1,
           status: 1,
+          parent_id: 1,
+          slotConfig: 1,
           children: 1,
         },
       },
@@ -595,8 +603,24 @@ export const CategoryService = {
 
     if (name !== undefined) updateData.name = name;
     if (description !== undefined) updateData.description = description;
-    if (category_image !== undefined)
+    if (category_image !== undefined) {
+      // Delete previous image file from disk if it exists
+      if (
+        category.category_image &&
+        category.category_image !== category_image
+      ) {
+        const oldFilePath = path.join(
+          process.cwd(),
+          category.category_image.replace(/^\//, ""),
+        );
+        if (fs.existsSync(oldFilePath)) {
+          fs.unlink(oldFilePath, (err) => {
+            if (err) console.error("Failed to delete old category image:", err);
+          });
+        }
+      }
       updateData.category_image = category_image;
+    }
 
     if (slotConfig !== undefined) {
       updateData.slotConfig = normalizeSlotConfig(

@@ -5,7 +5,7 @@ const isValidObjectId = (id) => /^[a-f\d]{24}$/i.test(String(id ?? ""));
 const relativeUploadPath = (subfolder, filename) =>
   `/uploads/${subfolder}/${filename}`;
 
-const mapProduct = (p) => ({
+const mapProduct = (p, category = null) => ({
   _id: p._id,
   name: p.name,
   slug: p.slug,
@@ -19,7 +19,7 @@ const mapProduct = (p) => ({
   vendor_id: p.vendor_id,
   basePrice: p.basePrice,
   variantLabel: p.variantLabel,
-  variants: (p.variants || []).map(({key, label, price, image }) => ({
+  variants: (p.variants || []).map(({ key, label, price, image }) => ({
     key,
     label,
     price,
@@ -222,10 +222,59 @@ export const ProductService = {
         .exec(),
     ]);
 
+    const categoryIds = [
+      ...new Set(
+        products
+          .flatMap((product) => [product.category_id, product.sub_category_id])
+          .filter(Boolean)
+          .map(String),
+      ),
+    ];
+
+    const categories = categoryIds.length
+      ? await Category.find({
+          _id: { $in: categoryIds },
+        })
+          .select("_id name category_image")
+          .lean()
+          .exec()
+      : [];
+
+    const categoryMap = new Map(
+      categories.map((category) => [String(category._id), category]),
+    );
+
     const totalPages = Math.ceil(total / limitNum);
 
     return {
-      data: products.map(mapProduct),
+      data: products.map((product) => {
+        const mappedProduct = mapProduct(product);
+
+        const { category_id, sub_category_id, ...productData } = mappedProduct;
+
+        return {
+          ...productData,
+
+          category: categoryMap.get(String(category_id))
+            ? {
+                _id: categoryMap.get(String(category_id))._id,
+                name: categoryMap.get(String(category_id)).name,
+                category_image:
+                  categoryMap.get(String(category_id)).category_image || "",
+              }
+            : null,
+
+          subCategory: categoryMap.get(String(sub_category_id))
+            ? {
+                _id: categoryMap.get(String(sub_category_id))._id,
+                name: categoryMap.get(String(sub_category_id)).name,
+                category_image:
+                  categoryMap.get(String(sub_category_id)).category_image || "",
+              }
+            : null,
+        };
+      }),
+
       pagination: {
         total,
         totalPages,

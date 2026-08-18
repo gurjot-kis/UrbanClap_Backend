@@ -143,7 +143,8 @@ export const CategoryController = {
         });
       }
 
-      const { name, parent_id, description, slotConfig } = req.body;
+      const { name, parent_id, description, slotConfig, remove_image } =
+        req.body;
 
       if (name !== undefined && !name.trim()) {
         return sendError(res, {
@@ -163,10 +164,17 @@ export const CategoryController = {
         });
       }
 
-      // Only overwrite category_image if a new file was uploaded
-      const category_image = req.file
-        ? `/uploads/categories/${req.file.filename}`
-        : undefined;
+      // Determine category_image value:
+      // 1. New file uploaded -> new file path
+      // 2. Explicitly removed -> null (clears DB field)
+      // 3. Untouched -> undefined (preserves current DB value)
+
+      let category_image = undefined
+      if(req.file){
+        category_image = `/uploads/categories/${req.file.filename}` 
+      } else if (remove_image === 'true' || remove_image === true){
+        category_image = null
+      }
 
       let parsedSlotConfig = slotConfig;
       if (typeof slotConfig === "string") {
