@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import User from "../models/user.model.js";
+import Category from "../models/category.model.js";
 import { mapUserStatus, parseUserStatus } from "../utils/user-status.js";
 
 const normalizeName = (value) => String(value).trim();
@@ -70,6 +71,16 @@ const buildVendorResponse = (v) => ({
   createdAt: v.createdAt,
 });
 
+const buildVendorListResponse = (v) => ({
+  ...buildVendorResponse(v),
+
+  category: (v.category || []).map((category) => ({
+    _id: category._id,
+    name: category.name,
+    image: category.category_image || "",
+  })),
+});
+
 export const VendorService = {
   getVendors: async ({
     page = 1,
@@ -126,20 +137,52 @@ export const VendorService = {
     const sortDir = sortOrder === "asc" ? 1 : -1;
 
     const [vendors, total] = await Promise.all([
-      User.find(filter)
-        .sort({ [sortField]: sortDir })
-        .skip(skip)
-        .limit(parsedLimit)
-        .select(
-          "-passwordHash -resetOtp -resetOtpExpiry -resetToken -resetTokenExpiry -loginTwilioOtp -loginTwilioOtpExpiry",
-        )
-        .lean()
-        .exec(),
+      User.aggregate([
+        {
+          $match: filter,
+        },
+
+        {
+          $sort: {
+            [sortField]: sortDir,
+          },
+        },
+
+        {
+          $skip: skip,
+        },
+
+        {
+          $limit: parsedLimit,
+        },
+
+        {
+          $lookup: {
+            from: "categories",
+            localField: "vendorCategories",
+            foreignField: "_id",
+            as: "category",
+          },
+        },
+
+        {
+          $project: {
+            passwordHash: 0,
+            resetOtp: 0,
+            resetOtpExpiry: 0,
+            resetToken: 0,
+            resetTokenExpiry: 0,
+            loginTwilioOtp: 0,
+            loginTwilioOtpExpiry: 0,
+          },
+        },
+      ]),
+
       User.countDocuments(filter),
     ]);
 
     return {
-      vendors: vendors.map(buildVendorResponse),
+      vendors: vendors.map(buildVendorListResponse),
       pagination: {
         total,
         page: parsedPage,

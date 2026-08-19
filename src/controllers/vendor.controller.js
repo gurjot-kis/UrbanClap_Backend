@@ -1,12 +1,21 @@
+import { sendError, sendSuccess } from "../helpers/response.helper.js";
 import { VendorService } from "../services/vendor.service.js";
 
 export const VendorController = {
   getVendors: async (req, res) => {
     try {
       const result = await VendorService.getVendors(req.query);
-      res.status(200).json({ success: true, ...result });
+      return sendSuccess(res, {
+        code: 200,
+        message: "Vendors fetched successfully",
+        data: result.vendors,
+        pagination: result.pagination,
+      });
     } catch (err) {
-      res.status(500).json({ success: false, message: err.message });
+      return sendError(res, {
+        code: 500,
+        message: err.message || "Failed to fetch vendors",
+      });
     }
   },
 
@@ -15,10 +24,14 @@ export const VendorController = {
       const vendor = await VendorService.getVendorById({
         user_id: req.params.id,
       });
-      res.status(200).json({ success: true, data: vendor });
+      return sendSuccess(res, {
+        code: 200,
+        message: "Vendor fetched successfully",
+        data: vendor,
+      });
     } catch (err) {
-      res.status(err.message === "Vendor not found" ? 404 : 400).json({
-        success: false,
+      return sendError(res, {
+        code: err.message === "Vendor not found" ? 404 : 400,
         message: err.message,
       });
     }
@@ -27,9 +40,16 @@ export const VendorController = {
   addVendor: async (req, res) => {
     try {
       const vendor = await VendorService.addVendor(req.body);
-      res.status(201).json({ success: true, data: vendor });
+      return sendSuccess(res, {
+        code: 201,
+        message: "Vendor added successfully",
+        data: vendor,
+      });
     } catch (err) {
-      res.status(400).json({ success: false, message: err.message });
+      return sendError(res, {
+        code: 400,
+        message: err.message,
+      });
     }
   },
 
@@ -39,10 +59,14 @@ export const VendorController = {
         user_id: req.params.id,
         ...req.body,
       });
-      res.status(200).json({ success: true, data: vendor });
+      return sendSuccess(res, {
+        code: 200,
+        message: "Vendor updated successfully",
+        data: vendor,
+      });
     } catch (err) {
-      res.status(err.message === "Vendor not found" ? 404 : 400).json({
-        success: false,
+      return sendError(res, {
+        code: err.message === "Vendor not found" ? 404 : 400,
         message: err.message,
       });
     }
@@ -54,10 +78,14 @@ export const VendorController = {
         user_id: req.params.id,
         status: req.body.status,
       });
-      res.status(200).json({ success: true, data: vendor });
+      return sendSuccess(res, {
+        code: 200,
+        message: "Vendor status updated successfully",
+        data: vendor,
+      });
     } catch (err) {
-      res.status(err.message === "Vendor not found" ? 404 : 400).json({
-        success: false,
+      return sendError(res, {
+        code: err.message === "Vendor not found" ? 404 : 400,
         message: err.message,
       });
     }
@@ -69,10 +97,14 @@ export const VendorController = {
         user_id: req.params.id,
         isVendorVerified: req.body.isVendorVerified,
       });
-      res.status(200).json({ success: true, data: vendor });
+      return sendSuccess(res, {
+        code: 200,
+        message: "Vendor verification status updated successfully",
+        data: vendor,
+      });
     } catch (err) {
-      res.status(err.message === "Vendor not found" ? 404 : 400).json({
-        success: false,
+      return sendError(res, {
+        code: err.message === "Vendor not found" ? 404 : 400,
         message: err.message,
       });
     }
@@ -84,10 +116,14 @@ export const VendorController = {
         user_id: req.params.id,
         isAvailableNow: req.body.isAvailableNow,
       });
-      res.status(200).json({ success: true, data: vendor });
+      return sendSuccess(res, {
+        code: 200,
+        message: "Vendor availability updated successfully",
+        data: vendor,
+      });
     } catch (err) {
-      res.status(err.message === "Vendor not found" ? 404 : 400).json({
-        success: false,
+      return sendError(res, {
+        code: err.message === "Vendor not found" ? 404 : 400,
         message: err.message,
       });
     }
@@ -100,10 +136,14 @@ export const VendorController = {
         latitude: req.body.latitude,
         longitude: req.body.longitude,
       });
-      res.status(200).json({ success: true, data: vendor });
+      return sendSuccess(res, {
+        code: 200,
+        message: "Vendor location updated successfully",
+        data: vendor,
+      });
     } catch (err) {
-      res.status(err.message === "Vendor not found" ? 404 : 400).json({
-        success: false,
+      return sendError(res, {
+        code: err.message === "Vendor not found" ? 404 : 400,
         message: err.message,
       });
     }
@@ -114,12 +154,14 @@ export const VendorController = {
       const result = await VendorService.deleteVendor({
         user_id: req.params.id,
       });
-      res
-        .status(200)
-        .json({ success: true, message: "Vendor deleted", data: result });
+      return sendSuccess(res, {
+        code: 200,
+        message: "Vendor deleted successfully",
+        data: result,
+      });
     } catch (err) {
-      res.status(err.message === "Vendor not found" ? 404 : 400).json({
-        success: false,
+      return sendError(res, {
+        code: err.message === "Vendor not found" ? 404 : 400,
         message: err.message,
       });
     }

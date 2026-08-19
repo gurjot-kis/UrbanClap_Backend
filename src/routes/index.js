@@ -12,9 +12,9 @@ import bannerRoutes from "./banner.routes.js";
 import cartSettingsRoutes from "./cart-settings.routes.js";
 import vendorRoutes from "./vendor.routes.js";
 import vendorSlotRoutes from "./vendorSlot.routes.js";
-import slotBookingRoutes from "./slotBooking.routes.js"
-import orderRoutes from "./order.routes.js"
-import paymentRoutes from "./payment.routes.js"
+import slotBookingRoutes from "./slotBooking.routes.js";
+import orderRoutes from "./order.routes.js";
+import paymentRoutes from "./payment.routes.js";
 
 const router = express.Router();
 
@@ -28,7 +28,7 @@ router.use(subCategoryRoutes);
 router.use(productRoutes);
 router.use(userRoutes);
 router.use(dashboardRoutes);
-router.use(adminRoutes);
+router.use("/admin", adminRoutes);
 router.use("/cart", cartRoutes);
 router.use("/address", addressRoutes);
 router.use(bannerRoutes);

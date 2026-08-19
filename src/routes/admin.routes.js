@@ -7,18 +7,25 @@ import { uploadAdminProfilePicture } from "../middlewares/upload.middleware.js";
 const router = express.Router();
 
 router.get(
-  "/admin/profile",
+  "/profile",
   authMiddleware,
   authorizeRoles(ROLES.SUPER_ADMIN),
-  AdminController.getProfile
+  AdminController.getProfile,
 );
 
 router.patch(
-  "/admin/profile",
+  "/profile",
   authMiddleware,
   authorizeRoles(ROLES.SUPER_ADMIN),
   uploadAdminProfilePicture,
-  AdminController.updateProfile
+  AdminController.updateProfile,
+);
+
+router.get(
+  "/dashboard",
+  authMiddleware,
+  authorizeRoles(ROLES.SUPER_ADMIN),
+  AdminController.getDashboardData,
 );
 
 export default router;
