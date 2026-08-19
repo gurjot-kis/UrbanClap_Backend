@@ -1,6 +1,5 @@
 import bcrypt from "bcryptjs";
 import User from "../models/user.model.js";
-import Category from "../models/category.model.js";
 import { mapUserStatus, parseUserStatus } from "../utils/user-status.js";
 
 const normalizeName = (value) => String(value).trim();
@@ -202,13 +201,26 @@ export const VendorService = {
       role: "Vendor",
     })
       .select(
-        "-passwordHash -resetOtp -resetOtpExpiry -resetToken -resetTokenExpiry -loginTwilioOtp -loginTwilioOtpExpiry",
+        "user_id name email phone address gst_number vendorCategories serviceableAreas createdAt",
       )
       .lean()
       .exec();
 
     if (!vendor) throw new Error("Vendor not found");
-    return buildVendorResponse(vendor);
+
+    return {
+      user_id: vendor.user_id,
+      fullName: vendor.name,
+      email: vendor.email,
+      phone: vendor.phone,
+      address: vendor.address,
+      gst_number: vendor.gst_number,
+      vendorCategories: vendor.vendorCategories || [],
+      serviceableAreas: (vendor.serviceableAreas || []).map((area) => ({
+        pincode: area.pincode,
+      })),
+      createdAt: vendor.createdAt,
+    };
   },
 
   addVendor: async ({
@@ -217,11 +229,9 @@ export const VendorService = {
     password,
     phone,
     address,
-    code,
     gst_number,
     vendorCategories,
     serviceableAreas,
-    status,
   }) => {
     if (!fullName || !email || !password) {
       throw new Error("fullName, email, and password are required");
@@ -238,10 +248,8 @@ export const VendorService = {
       email: normalizedEmail,
       phone: phone ? String(phone).trim() : "",
       address: address ? String(address).trim() : "",
-      code: code ? String(code).trim() : "",
       gst_number: gst_number ? String(gst_number).trim() : "",
       role: "Vendor",
-      status: parseUserStatus(status),
       passwordHash,
       vendorCategories: normalizeVendorCategories(vendorCategories) || [],
       serviceableAreas: normalizeServiceableAreas(serviceableAreas) || [],
@@ -257,9 +265,7 @@ export const VendorService = {
     password,
     phone,
     address,
-    code,
     gst_number,
-    status,
     vendorCategories,
     serviceableAreas,
     currentLocation,
@@ -285,9 +291,7 @@ export const VendorService = {
     if (password) vendor.passwordHash = await bcrypt.hash(String(password), 10);
     if (phone !== undefined) vendor.phone = String(phone).trim();
     if (address !== undefined) vendor.address = String(address).trim();
-    if (code !== undefined) vendor.code = String(code).trim();
     if (gst_number !== undefined) vendor.gst_number = String(gst_number).trim();
-    if (status !== undefined) vendor.status = parseUserStatus(status);
 
     if (vendorCategories !== undefined) {
       vendor.vendorCategories = normalizeVendorCategories(vendorCategories);
