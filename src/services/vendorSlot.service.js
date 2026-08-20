@@ -174,7 +174,7 @@ export const getAllVendorSlots = async (query) => {
   if (distinctSlotTypes.size === 1) {
     data = {
       slotType: slotsWithType[0].slotType,
-      slots: slotsWithType.map(({_id, startTime, endTime }) => ({
+      slots: slotsWithType.map(({ _id, startTime, endTime }) => ({
         _id,
         startTime,
         endTime,
@@ -184,6 +184,134 @@ export const getAllVendorSlots = async (query) => {
     // mixed categories in result set — keep slotType per slot since it varies
     data = { slots: slotsWithType };
   }
+
+  return {
+    data,
+    pagination: {
+      total,
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.ceil(total / limitNum),
+    },
+  };
+};
+
+export const getVendorSlots = async (vendor_id, query = {}) => {
+  if (!isValidObjectId(vendor_id)) {
+    throw {
+      statusCode: 400,
+      message: "Invalid vendor id",
+    };
+  }
+
+  const {
+    category_id,
+    date,
+    from_date,
+    to_date,
+    status,
+    page = 1,
+    limit = 20,
+  } = query;
+
+  const filter = {
+    vendor_id,
+  };
+
+  if (category_id) {
+    if (!isValidObjectId(category_id)) {
+      throw {
+        statusCode: 400,
+        message: "Invalid category_id",
+      };
+    }
+
+    filter.category_id = category_id;
+  }
+
+  if (status) {
+    filter.status = status;
+  }
+
+  if (date) {
+    const start = new Date(date);
+    start.setUTCHours(0, 0, 0, 0);
+
+    const end = new Date(start);
+    end.setUTCDate(end.getUTCDate() + 1);
+
+    filter.date = {
+      $gte: start,
+      $lt: end,
+    };
+  } else if (from_date || to_date) {
+    filter.date = {};
+
+    if (from_date) {
+      filter.date.$gte = new Date(from_date);
+    }
+
+    if (to_date) {
+      filter.date.$lte = new Date(to_date);
+    }
+  }
+
+  const pageNum = Math.max(Number(page) || 1, 1);
+  const limitNum = Math.min(Math.max(Number(limit) || 20, 1), 100);
+
+  const skip = (pageNum - 1) * limitNum;
+
+  const [slots, total] = await Promise.all([
+    VendorSlot.find(filter)
+      .populate("category_id", "name slotConfig")
+      .sort({
+        date: 1,
+        startTime: 1,
+      })
+      .skip(skip)
+      .limit(limitNum)
+      .lean(),
+
+    VendorSlot.countDocuments(filter),
+  ]);
+
+  const slotTypeByCategory = new Map();
+
+  const getSlotTypeForCategory = (category) => {
+    const categoryId = category?._id?.toString();
+
+    if (!categoryId) {
+      return ["schedule"];
+    }
+
+    if (!slotTypeByCategory.has(categoryId)) {
+      const slotConfig = category.slotConfig || {};
+
+      const allowInstant = !!slotConfig.allowInstant;
+      const allowSchedule = !!slotConfig.allowSchedule;
+
+      const slotType =
+        allowInstant && allowSchedule ? ["instant", "schedule"] : ["schedule"];
+
+      slotTypeByCategory.set(categoryId, slotType);
+    }
+
+    return slotTypeByCategory.get(categoryId);
+  };
+
+  const data = slots.map((slot) => ({
+    _id: slot._id,
+    vendor_id: slot.vendor_id,
+    category_id: slot.category_id?._id,
+    categoryName: slot.category_id?.name || null,
+    slotType: getSlotTypeForCategory(slot.category_id),
+    date: slot.date,
+    startTime: formatTimeToAMPM(slot.startTime),
+    endTime: formatTimeToAMPM(slot.endTime),
+    location: slot.location,
+    status: slot.status,
+    booking_id: slot.booking_id || null,
+  }));
 
   return {
     data,

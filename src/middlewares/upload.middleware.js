@@ -85,6 +85,12 @@ export const uploadAdminProfilePicture = multer({
   limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB per file
 }).single("profile_picture");
 
+export const uploadVendorProfilePicture = multer({
+  storage: createStorage("vendor"),
+  fileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 },
+}).single("profile_picture");
+
 export const uploadBannerImage = multer({
   storage: createStorage("banners"),
   fileFilter,

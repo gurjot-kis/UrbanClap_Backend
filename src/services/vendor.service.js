@@ -80,6 +80,16 @@ const buildVendorListResponse = (v) => ({
   })),
 });
 
+const buildVendorProfileResponse = (vendor) => ({
+  user_id: vendor.user_id,
+  fullName: vendor.name,
+  email: vendor.email,
+  phone: vendor.phone || "",
+  address: vendor.address || "",
+  gst_number: vendor.gst_number || "",
+  code: vendor.code || "",
+});
+
 export const VendorService = {
   getVendors: async ({
     page = 1,
@@ -384,6 +394,114 @@ export const VendorService = {
 
     await User.deleteOne({ user_id: String(user_id).trim() });
     return { user_id: String(user_id).trim() };
+  },
+
+  // Vendor Profile
+  getProfile: async ({ user_id }) => {
+    const vendor = await User.findOne({
+      user_id: String(user_id).trim(),
+      role: "Vendor",
+    })
+      .select(
+        "user_id name email phone address gst_number code profilePicture -_id",
+      )
+      .lean()
+      .exec();
+
+    if (!vendor) {
+      throw new Error("Vendor not found");
+    }
+
+    return buildVendorProfileResponse(vendor);
+  },
+
+  updateProfile: async ({
+    user_id,
+    name,
+    email,
+    phone,
+    address,
+    gst,
+    code,
+    password,
+    profilePicture,
+  }) => {
+    if (
+      !name &&
+      !email &&
+      phone === undefined &&
+      address === undefined &&
+      gst === undefined &&
+      !password &&
+      !profilePicture
+    ) {
+      throw new Error("At least one field is required to update");
+    }
+
+    const vendor = await User.findOne({
+      user_id: String(user_id).trim(),
+      role: "Vendor",
+    }).exec();
+
+    if (!vendor) {
+      throw new Error("Vendor not found");
+    }
+
+    // Email
+    if (email) {
+      const normalizedEmail = normalizeEmail(email);
+
+      const duplicate = await User.findOne({
+        email: normalizedEmail,
+        user_id: {
+          $ne: String(user_id).trim(),
+        },
+      }).exec();
+
+      if (duplicate) {
+        throw new Error("Email already in use");
+      }
+
+      vendor.email = normalizedEmail;
+    }
+
+    // Name
+    if (name) {
+      vendor.name = normalizeName(name);
+    }
+
+    // Phone
+    if (phone !== undefined) {
+      vendor.phone = String(phone).trim();
+    }
+
+    // Address
+    if (address !== undefined) {
+      vendor.address = String(address).trim();
+    }
+
+    // GST
+    if (gst !== undefined) {
+      vendor.gst_number = String(gst).trim();
+    }
+
+    if (code !== undefined) {
+      vendor.code = String(code).trim();
+    }
+
+    // Password - only update when provided
+    if (password) {
+      vendor.passwordHash = await bcrypt.hash(String(password), 10);
+    }
+
+    // Profile picture
+    if (profilePicture) {
+      vendor.profilePicture = profilePicture;
+    }
+
+    await vendor.save();
+
+    return buildVendorResponse(vendor);
   },
 };
 

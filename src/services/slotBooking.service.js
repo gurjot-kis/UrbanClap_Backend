@@ -192,8 +192,7 @@ const isSlotCategoryValidForTarget = async (
   return slotChain.includes(String(target));
 };
 
-// === CREATE ===
-// payload.cartItems = [{ product_id, variantKey, quantity }], all items must share one category
+
 
 export const createSlotBooking = async (userId, payload) => {
   const {

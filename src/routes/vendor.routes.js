@@ -2,10 +2,17 @@ import express from "express";
 import { VendorController } from "../controllers/vendor.controller.js";
 import { authMiddleware } from "../middlewares/auth.middleware.js";
 import { authorizeRoles, ROLES } from "../middlewares/role.middleware.js";
+import { uploadVendorProfilePicture } from "../middlewares/upload.middleware.js";
 
 const router = express.Router();
 
 router.use(authMiddleware);
+
+router.get(
+  "/profile",
+  authorizeRoles(ROLES.VENDOR),
+  VendorController.getProfile,
+);
 
 router.get("/", authorizeRoles(ROLES.SUPER_ADMIN), VendorController.getVendors);
 router.post("/", authorizeRoles(ROLES.SUPER_ADMIN), VendorController.addVendor);
@@ -16,5 +23,13 @@ router.patch("/:id/verify", authorizeRoles(ROLES.SUPER_ADMIN), VendorController.
 router.patch("/:id/availability", authorizeRoles(ROLES.SUPER_ADMIN, ROLES.VENDOR), VendorController.updateVendorAvailability);
 router.patch("/:id/location", authorizeRoles(ROLES.SUPER_ADMIN, ROLES.VENDOR), VendorController.updateVendorLocation);
 router.delete("/:id", authorizeRoles(ROLES.SUPER_ADMIN), VendorController.deleteVendor);
+
+
+router.patch(
+  "/profile",
+  authorizeRoles(ROLES.VENDOR),
+  uploadVendorProfilePicture,
+  VendorController.updateProfile,
+);
 
 export default router;
