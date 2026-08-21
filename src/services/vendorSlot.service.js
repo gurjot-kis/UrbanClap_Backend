@@ -313,13 +313,17 @@ export const getVendorSlots = async (vendor_id, query = {}) => {
     booking_id: slot.booking_id || null,
   }));
 
+  const totalPages = Math.ceil(total / limitNum);
+
   return {
     data,
     pagination: {
       total,
       page: pageNum,
       limit: limitNum,
-      totalPages: Math.ceil(total / limitNum),
+      totalPages,
+      hasNextPage: pageNum < totalPages,
+      hasPrevPage: pageNum > 1,
     },
   };
 };
@@ -400,5 +404,36 @@ export const deleteVendorSlot = async (id, force = false) => {
   }
 
   await VendorSlot.deleteOne({ _id: id });
+  return slot;
+};
+
+export const updateVendorSlotAvailability = async (id) => {
+  if (!isValidObjectId(id)) {
+    throw {
+      statusCode: 400,
+      message: "Invalid slot id",
+    };
+  }
+
+  const slot = await VendorSlot.findById(id);
+
+  if (!slot) {
+    throw {
+      statusCode: 404,
+      message: "Slot not found",
+    };
+  }
+
+  if (slot.status === "booked") {
+    throw {
+      statusCode: 400,
+      message: "Booked slot availability cannot be changed",
+    };
+  }
+
+  slot.status = slot.status === "available" ? "blocked" : "available";
+
+  await slot.save();
+
   return slot;
 };

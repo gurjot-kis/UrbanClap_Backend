@@ -2,7 +2,11 @@ import * as vendorSlotService from "../services/vendorSlot.service.js";
 
 export const addVendorSlot = async (req, res) => {
   try {
-    const slot = await vendorSlotService.createVendorSlot(req.body);
+    const vendor_id = req.user._id;
+    const slot = await vendorSlotService.createVendorSlot({
+      ...req.body,
+      vendor_id,
+    });
     return res.status(200).json({
       success: true,
       statusCode: 201,
@@ -88,6 +92,27 @@ export const deleteVendorSlot = async (req, res) => {
       success: true,
       statusCode: 200,
       message: "Slot deleted successfully",
+      data: slot,
+    });
+  } catch (err) {
+    return res.status(200).json({
+      success: false,
+      statusCode: err.statusCode || 500,
+      message: err.message || "Something went wrong",
+    });
+  }
+};
+
+export const updateVendorSlotAvailability = async (req, res) => {
+  try {
+    const slot = await vendorSlotService.updateVendorSlotAvailability(
+      req.params.id,
+    );
+
+    return res.status(200).json({
+      success: true,
+      statusCode: 200,
+      message: `Slot marked as ${slot.status} successfully`,
       data: slot,
     });
   } catch (err) {
