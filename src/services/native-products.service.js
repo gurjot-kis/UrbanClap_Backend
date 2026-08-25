@@ -112,12 +112,111 @@ export const NativeProductService = {
       };
     }
 
-    // Sort by sort_order
     description.descriptionMedia.sort((a, b) => a.sort_order - b.sort_order);
 
     return {
       _id: description._id,
       descriptionMedia: description.descriptionMedia,
+    };
+  },
+
+  getNativeProductDetailForMobile: async (id) => {
+    const product = await NativeProduct.findOne(
+      { _id: id, status: "active" },
+      {
+        _id: 1,
+        product_name: 1,
+        slug: 1,
+        base_price: 1,
+        main_image: 1,
+        rating: 1,
+        options: 1,
+        exchange_steps: 1,
+        banner_gallery: 1,
+        product_details: 1,
+        product_specification: 1,
+        category_id: 1,
+        sub_category_id: 1,
+      },
+    ).lean();
+
+    if (!product) throw new Error("Product not found");
+
+    // ─── Sort options: no natural order field, keep as-is ─────────────────
+    const options = (product.options ?? []).map((opt) => ({
+      _id: opt._id,
+      label: opt.label,
+      image: opt.image ?? null,
+      price: opt.price,
+      rating: opt.rating,
+    }));
+
+    // ─── Sort exchange_steps by step number ascending ──────────────────────
+    const exchangeSteps = (product.exchange_steps ?? [])
+      .sort((a, b) => a.step - b.step)
+      .map((s) => ({
+        _id: s._id,
+        step: s.step,
+        url: s.url,
+      }));
+
+    // ─── Sort banner_gallery by sort_order ascending ───────────────────────
+    const bannerGallery = (product.banner_gallery ?? [])
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .map((item) => ({
+        _id: item._id,
+        type: item.type,
+        sort_order: item.sort_order,
+        ...(item.type === "slider"
+          ? {
+              slider_title: item.slider_title ?? null,
+              slider_images: item.slider_images ?? [],
+            }
+          : { url: item.url }),
+      }));
+
+    // ─── Sort product_details by sort_order ascending ─────────────────────
+    const productDetails = (product.product_details ?? [])
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .map((item) => ({
+        _id: item._id,
+        type: item.type,
+        sort_order: item.sort_order,
+        ...(item.type === "slider"
+          ? {
+              slider_title: item.slider_title ?? null,
+              slider_images: item.slider_images ?? [],
+            }
+          : { url: item.url }),
+      }));
+
+    // ─── Sort product_specification.full_desc_content by sort_order ───────
+    const specification = {
+      short_desc_image: product.product_specification?.short_desc_image ?? null,
+      full_desc_content: (
+        product.product_specification?.full_desc_content ?? []
+      )
+        .sort((a, b) => a.sort_order - b.sort_order)
+        .map((item) => ({
+          sort_order: item.sort_order,
+          image: item.image,
+        })),
+    };
+
+    return {
+      _id: product._id,
+      product_name: product.product_name,
+      slug: product.slug,
+      base_price: product.base_price,
+      main_image: product.main_image,
+      rating: product.rating,
+      category_id: product.category_id,
+      sub_category_id: product.sub_category_id ?? null,
+      options,
+      exchange_steps: exchangeSteps,
+      banner_gallery: bannerGallery,
+      product_details: productDetails,
+      product_specification: specification,
     };
   },
 };

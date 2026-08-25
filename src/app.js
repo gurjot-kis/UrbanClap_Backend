@@ -11,14 +11,16 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
-const allowedOrigins = ["http://localhost:5173", "https://yourapp.com"];
-app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) callback(null, true);
-    else callback(new Error("Not allowed by CORS"));
-  },
-  credentials: true,
-}));
+const allowedOrigins = ["http://localhost:5173", "http://103.164.67.226:5173"];
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) callback(null, true);
+      else callback(new Error("Not allowed by CORS"));
+    },
+    credentials: true,
+  }),
+);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

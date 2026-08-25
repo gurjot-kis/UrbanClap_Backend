@@ -35,6 +35,24 @@ export const NativeProductController = {
       });
     }
   },
+
+  fetchNativeProductDetailForMobile: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const product =
+        await NativeProductService.getNativeProductDetailForMobile(id);
+
+      return sendSuccess(res, {
+        message: "Native product detail fetched successfully",
+        data: product,
+      });
+    } catch (error) {
+      return sendError(res, {
+        code: error.message === "Product not found" ? 404 : 500,
+        message: error.message,
+      });
+    }
+  },
 };
 
 export default NativeProductController;
