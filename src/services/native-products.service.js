@@ -1,6 +1,6 @@
 import NativeCategory from "../models/nativeCategory.model.js";
 import NativeProduct from "../models/nativeProduct.model.js";
-import NativeDescription from "../models/native-description.model.js";
+import PageContent from "../models/static-contents.model.js";
 
 export const NativeProductService = {
   getNativeProductsListForMobile: async () => {
@@ -94,30 +94,6 @@ export const NativeProductService = {
     };
 
     return response;
-  },
-
-  getNativeDescriptionForMobile: async () => {
-    const description = await NativeDescription.findOne(
-      {},
-      {
-        _id: 1,
-        descriptionMedia: 1,
-      },
-    ).lean();
-
-    if (!description) {
-      return {
-        _id: null,
-        descriptionMedia: [],
-      };
-    }
-
-    description.descriptionMedia.sort((a, b) => a.sort_order - b.sort_order);
-
-    return {
-      _id: description._id,
-      descriptionMedia: description.descriptionMedia,
-    };
   },
 
   getNativeProductDetailForMobile: async (id) => {
@@ -217,6 +193,34 @@ export const NativeProductService = {
       banner_gallery: bannerGallery,
       product_details: productDetails,
       product_specification: specification,
+    };
+  },
+
+  getNativeDescriptionForMobile: async () => {
+    const description = await PageContent.findOne(
+      {
+        page: "NativeProduct",
+        section: "description",
+        key: "native_product_description",
+      },
+      {
+        _id: 1,
+        descriptionMedia: 1,
+      },
+    ).lean();
+
+    if (!description) {
+      return {
+        _id: null,
+        descriptionMedia: [],
+      };
+    }
+
+    description.descriptionMedia.sort((a, b) => a.sort_order - b.sort_order);
+
+    return {
+      _id: description._id,
+      descriptionMedia: description.descriptionMedia,
     };
   },
 };
