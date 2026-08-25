@@ -1,5 +1,6 @@
 import NativeCategory from "../models/nativeCategory.model.js";
 import NativeProduct from "../models/nativeProduct.model.js";
+import NativeDescription from "../models/native-description.model.js";
 
 export const NativeProductService = {
   getNativeProductsListForMobile: async () => {
@@ -56,7 +57,7 @@ export const NativeProductService = {
       },
     )
       .sort({ createdAt: -1 })
-      .limit(5)
+      .limit(3)
       .lean();
 
     // ─── 4. Build dynamic response ────────────────────────────────────────
@@ -93,6 +94,31 @@ export const NativeProductService = {
     };
 
     return response;
+  },
+
+  getNativeDescriptionForMobile: async () => {
+    const description = await NativeDescription.findOne(
+      {},
+      {
+        _id: 1,
+        descriptionMedia: 1,
+      },
+    ).lean();
+
+    if (!description) {
+      return {
+        _id: null,
+        descriptionMedia: [],
+      };
+    }
+
+    // Sort by sort_order
+    description.descriptionMedia.sort((a, b) => a.sort_order - b.sort_order);
+
+    return {
+      _id: description._id,
+      descriptionMedia: description.descriptionMedia,
+    };
   },
 };
 

@@ -18,6 +18,23 @@ export const NativeProductController = {
       });
     }
   },
+
+  fetchNativeDescriptionForMobile: async (req, res) => {
+    try {
+      const description =
+        await NativeProductService.getNativeDescriptionForMobile();
+
+      return sendSuccess(res, {
+        message: "Native description fetched successfully",
+        data: description,
+      });
+    } catch (error) {
+      return sendError(res, {
+        code: 500,
+        message: error.message,
+      });
+    }
+  },
 };
 
 export default NativeProductController;
