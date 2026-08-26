@@ -217,51 +217,6 @@ export const UserController = {
     }
   },
 
-  updateUserProfile: async (req, res) => {
-    try {
-      const user_id = req.user?._id;
-
-      const { name, email, phone, dob, anniversaryDate } = req.body || {};
-
-      const data = await UserService.updateUserProfile({
-        user_id,
-        name,
-        email,
-        phone,
-        dob,
-        anniversaryDate,
-      });
-
-      return sendSuccess(res, {
-        success: true,
-        code: 200,
-        message: "Profile updated successfully",
-        data,
-      });
-    } catch (err) {
-      const message = err?.message || "Profile update failed";
-
-      if (message === "User not found") {
-        return sendError(res, {
-          code: 404,
-          message,
-        });
-      }
-
-      if (message === "Email already in use") {
-        return sendError(res, {
-          code: 409,
-          message,
-        });
-      }
-
-      return sendError(res, {
-        code: 400,
-        message,
-      });
-    }
-  },
-
   updateUserStatusByAdmin: async (req, res) => {
     try {
       const { user_id } = req.params || {};
@@ -304,8 +259,6 @@ export const UserController = {
       });
     }
   },
-
-  // VENDORS Section
 };
 
 export default UserController;

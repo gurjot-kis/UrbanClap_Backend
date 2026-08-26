@@ -18,6 +18,7 @@ const UserSchema = new mongoose.Schema(
       unique: true,
       index: true,
     },
+
     phone: { type: String, default: "" },
     address: { type: String, default: "" },
     dob: {
@@ -60,6 +61,34 @@ const UserSchema = new mongoose.Schema(
     resetTokenExpiry: { type: Date, default: null },
     loginTwilioOtp: { type: String, default: null },
     loginTwilioOtpExpiry: { type: Date, default: null },
+
+    profile_status: {
+      type: String,
+      enum: ["incomplete", "complete"],
+      default: "incomplete",
+    },
+
+    isEmailVerified: {
+      type: Boolean,
+      default: false,
+    },
+
+    emailVerificationOtp: {
+      type: String,
+      default: null,
+    },
+
+    emailVerificationOtpExpiry: {
+      type: Date,
+      default: null,
+    },
+
+    pendingEmail: {
+      type: String,
+      default: null,
+      trim: true,
+      lowercase: true,
+    },
 
     // vendor-only fields
     vendorCategories: [

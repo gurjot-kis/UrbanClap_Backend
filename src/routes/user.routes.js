@@ -12,12 +12,6 @@ router.patch(
   UserController.updateUserLocation,
 );
 
-router.put(
-  "/user/profile",
-  authMiddleware,
-  authorizeRoles(ROLES.USER),
-  UserController.updateUserProfile,
-);
 
 router.get(
   "/users",

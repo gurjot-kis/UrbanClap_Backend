@@ -1,9 +1,11 @@
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import User from "../models/user.model.js";
 import Cart from "../models/cart.model.js";
 import Address from "../models/address.model.js";
 import Order from "../models/order.model.js";
 import { mapUserStatus, parseUserStatus } from "../utils/user-status.js";
+import { sendTemplateEmail } from "../utils/email.js";
 
 const normalizeName = (value) => String(value).trim();
 const normalizeEmail = (value) => String(value).trim().toLowerCase();
@@ -11,6 +13,18 @@ const normalizeUserId = (value) =>
   String(value ?? "")
     .trim()
     .replace(/^:/, "");
+
+const generateOtp = () => {
+  return crypto.randomInt(100000, 1000000).toString();
+};
+
+const getProfileStatus = ({ name, email, phone }) => {
+  const hasName = String(name || "").trim() !== "";
+  const hasEmail = String(email || "").trim() !== "";
+  const hasPhone = String(phone || "").trim() !== "";
+
+  return hasName && hasEmail && hasPhone ? "complete" : "incomplete";
+};
 
 const buildUserResponse = (user) => ({
   user_id: user.user_id,
@@ -372,42 +386,28 @@ export const UserService = {
     dob,
     anniversaryDate,
   }) => {
-    if (!user_id) {
-      throw new Error("user_id is required");
-    }
-
-    if (!name || !email) {
-      throw new Error("name and email are required");
-    }
+    if (!user_id) throw new Error("user_id is required");
+    if (!name || !email) throw new Error("name and email are required");
 
     const user = await User.findById(user_id).exec();
-
-    if (!user) {
-      throw new Error("User not found");
-    }
+    if (!user) throw new Error("User not found");
 
     const normalizedEmail = normalizeEmail(email);
+    const emailChanged = user.email?.toLowerCase() !== normalizedEmail;
 
-    const duplicate = await User.findOne({
-      email: normalizedEmail,
-      user_id: { $ne: String(user_id).trim() },
-    }).exec();
+    if (emailChanged) {
+      const duplicate = await User.findOne({
+        email: normalizedEmail,
+        user_id: { $ne: String(user_id).trim() },
+      }).exec();
 
-    if (duplicate) {
-      throw new Error("Email already in use");
+      if (duplicate) throw new Error("Email already in use");
     }
 
     user.name = normalizeName(name);
-    user.email = normalizedEmail;
 
-    if (phone !== undefined) {
-      user.phone = String(phone).trim();
-    }
-
-    if (dob !== undefined) {
-      user.dob = parseOptionalDate(dob, "dob");
-    }
-
+    if (phone !== undefined) user.phone = String(phone).trim();
+    if (dob !== undefined) user.dob = parseOptionalDate(dob, "dob");
     if (anniversaryDate !== undefined) {
       user.anniversaryDate = parseOptionalDate(
         anniversaryDate,
@@ -415,9 +415,92 @@ export const UserService = {
       );
     }
 
+    user.profile_status = getProfileStatus({
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+    });
+
+    if (emailChanged) {
+      const verificationOtp = generateOtp();
+      user.pendingEmail = normalizedEmail;
+      user.emailVerificationOtp = verificationOtp;
+      user.emailVerificationOtpExpiry = new Date(Date.now() + 10 * 60 * 1000);
+      user.isEmailVerified = false;
+
+      await user.save();
+
+      sendTemplateEmail({
+        to: normalizedEmail,
+        subject: "Verification code for email update",
+        template: "email-verification.template.ejs",
+        data: {
+          name: user.name,
+          otp: verificationOtp,
+          expiryMinutes: 10,
+        },
+      }).catch((err) => {
+        console.error("Email send failed:", err.message);
+      });
+      return { emailVerificationSent: true };
+    }
+
     await user.save();
 
-    return buildUserResponse(user);
+    return {
+      emailVerificationSent: false,
+      user_id: user._id,
+      email: user.email,
+      phone: user.phone || "",
+      dob: user.dob || null,
+      anniversaryDate: user.anniversaryDate || null,
+      profile_status: user.profile_status || "incomplete",
+      isEmailVerified: user.isEmailVerified || false,
+    };
+  },
+
+  verifyEmailOtp: async ({ user_id, otp }) => {
+    if (!user_id) throw new Error("user_id is required");
+    if (!otp) throw new Error("otp is required");
+
+    const user = await User.findById(user_id).exec();
+    if (!user) throw new Error("User not found");
+
+    if (!user.emailVerificationOtp || !user.pendingEmail) {
+      throw new Error("No pending email verification");
+    }
+
+    if (new Date() > user.emailVerificationOtpExpiry) {
+      throw new Error("OTP has expired");
+    }
+
+    if (user.emailVerificationOtp !== String(otp).trim()) {
+      throw new Error("Invalid OTP");
+    }
+
+    user.email = user.pendingEmail;
+    user.pendingEmail = null;
+    user.emailVerificationOtp = null;
+    user.emailVerificationOtpExpiry = null;
+    user.isEmailVerified = true;
+
+    user.profile_status = getProfileStatus({
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+    });
+
+    await user.save();
+
+    return {
+      user_id: user._id,
+      email: user.email,
+      phone: user.phone || "",
+      dob: user.dob || null,
+      anniversaryDate: user.anniversaryDate || null,
+      profile_status: user.profile_status || "incomplete",
+      isEmailVerified: user.isEmailVerified || false,
+    };
   },
 };
 
