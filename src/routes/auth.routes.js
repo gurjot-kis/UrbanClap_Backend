@@ -15,13 +15,7 @@ router.post("/forgot-password", AuthController.forgotPassword);
 router.post("/verify-otp", AuthController.verifyOtp);
 router.post("/reset-password", AuthController.resetPassword);
 
-router.post("/login_twilio", AuthController.loginTwilio);
-router.post("/login_twilio_verify", AuthController.loginTwilioVerify);
-router.post("/login_twilio_otp", AuthController.loginTwilioOtp);
-router.post("/login_twilio_otp_verify", AuthController.loginTwilioOtpVerify);
-
 // Social auth
 router.post("/auth/social", SocialAuthController.socialAuth);
 
 export default router;
-

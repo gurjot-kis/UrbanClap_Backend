@@ -4,7 +4,8 @@ import { fileURLToPath } from "url";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import indexRoutes from "./routes/index.js";
-import MobileRoutes from "./routes/mobile/index.js";
+import MobileRoutes from "./routes/mobile/index.routes.js";
+import AdminRoutes from "./routes/admin/index.routes.js"
 import { errorHandler } from "./middlewares/error.middleware.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -31,6 +32,7 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 app.use("/api", indexRoutes);
 app.use("/api/mobile", MobileRoutes);
+app.use("/api/admin", AdminRoutes);
 
 app.use(errorHandler);
 

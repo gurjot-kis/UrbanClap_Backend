@@ -502,6 +502,25 @@ export const UserService = {
       isEmailVerified: user.isEmailVerified || false,
     };
   },
+
+  getMyProfile: async ({ user_id }) => {
+    if (!user_id) {
+      throw new Error("user_id is required");
+    }
+
+    const user = await User.findById(user_id)
+      .select(
+        "name email phone dob anniversaryDate address latitude longitude isEmailVerified profile_status ",
+      )
+      .lean()
+      .exec();
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    return user;
+  },
 };
 
 export default UserService;

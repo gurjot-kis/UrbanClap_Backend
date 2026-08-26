@@ -5,6 +5,13 @@ import { UserController } from "../../controllers/mobile/index.controller.js";
 
 const router = express.Router();
 
+router.get(
+  "/profile",
+  authMiddleware,
+  authorizeRoles(ROLES.USER),
+  UserController.getMyProfile,
+);
+
 router.put(
   "/profile",
   authMiddleware,
