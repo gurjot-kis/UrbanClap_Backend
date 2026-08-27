@@ -8,12 +8,6 @@ const router = express.Router();
 
 router.get("/", CategoryController.getCategories);
 
-router.get(
-  "/admin",
-  authMiddleware,
-  authorizeRoles(ROLES.SUPER_ADMIN),
-  CategoryController.getAdminCategories,
-);
 router.post(
   "/",
   authMiddleware,

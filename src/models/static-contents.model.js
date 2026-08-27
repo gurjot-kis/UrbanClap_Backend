@@ -111,7 +111,52 @@ const SpotlightContentSchema = new mongoose.Schema(
   },
 );
 
-const NativeDescriptionItemSchema = new mongoose.Schema(
+const SliderImageDetailsSchema = new mongoose.Schema(
+  {
+    image: {
+      type: String,
+      trim: true,
+      required: true,
+    },
+
+    relatedImages: {
+      type: [String],
+      default: undefined,
+    },
+
+    sortOrder: {
+      type: Number,
+      default: 0,
+    },
+  },
+  {
+    _id: false,
+  },
+);
+const SliderVideoDetailsSchema = new mongoose.Schema(
+  {
+    video: {
+      type: String,
+      trim: true,
+      required: true,
+    },
+
+    relatedVideos: {
+      type: [String],
+      default: undefined,
+    },
+
+    sortOrder: {
+      type: Number,
+      default: 0,
+    },
+  },
+  {
+    _id: false,
+  },
+);
+
+const DescriptionItemSchema = new mongoose.Schema(
   {
     url: {
       type: String,
@@ -142,8 +187,27 @@ const NativeDescriptionItemSchema = new mongoose.Schema(
       type: String,
       default: undefined,
     },
+    slider_description: {
+      type: String,
+      default: undefined,
+    },
 
     slider_images: {
+      type: [String],
+      default: undefined,
+    },
+    
+    slider_videos: {
+      type: [SliderVideoDetailsSchema],
+      default: undefined,
+    },
+
+    sliderImageDetails: {
+      type: [SliderImageDetailsSchema],
+      default: undefined,
+    },
+
+    relatedImages: {
       type: [String],
       default: undefined,
     },
@@ -179,6 +243,11 @@ const staticContentSchema = new mongoose.Schema(
       default: undefined,
     },
 
+    marqueeContent: {
+      type: [String],
+      default: undefined,
+    },
+
     backgroundImage: {
       type: String,
       trim: true,
@@ -196,7 +265,18 @@ const staticContentSchema = new mongoose.Schema(
     },
 
     descriptionMedia: {
-      type: [NativeDescriptionItemSchema],
+      type: [DescriptionItemSchema],
+      default: undefined,
+    },
+
+    nativeCategoryDetails: {
+      type: [DescriptionItemSchema],
+      default: undefined,
+    },
+
+    nativeCategoryId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "NativeCategory",
       default: undefined,
     },
 

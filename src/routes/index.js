@@ -11,7 +11,6 @@ import vendorSlotRoutes from "./vendorSlot.routes.js";
 import slotBookingRoutes from "./slotBooking.routes.js";
 import orderRoutes from "./order.routes.js";
 import paymentRoutes from "./payment.routes.js";
-import nativeCategoryRoutes from "./native-category.routes.js";
 import nativeProductRoutes from "./native-products.routes.js";
 import PageContentRoutes from "./page-content.routes.js";
 
@@ -33,7 +32,6 @@ router.use("/vendor-slots", vendorSlotRoutes);
 router.use("/slot-booking", slotBookingRoutes);
 router.use("/orders", orderRoutes);
 router.use("/payments", paymentRoutes);
-router.use("/native-category", nativeCategoryRoutes);
 router.use("/native-products", nativeProductRoutes);
 router.use("/mobile",PageContentRoutes);
 
