@@ -49,7 +49,7 @@ export const NativeCategoryService = {
 
       PageContent.findOne({
         page: "NativeCategoryDetails",
-        section: "detailspage",
+        key: "native_category_details",
         status: "active",
         nativeCategoryId: categoryId,
       })
