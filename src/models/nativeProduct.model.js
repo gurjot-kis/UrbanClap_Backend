@@ -36,7 +36,7 @@ const MediaItemSchema = new mongoose.Schema(
           if (this.type === "image" || this.type === "video") {
             return v != null && v.trim() !== "";
           }
-          return true; 
+          return true;
         },
         message: "url is required for image and video types",
       },
@@ -137,6 +137,12 @@ const NativeProductSchema = new mongoose.Schema(
     product_specification: {
       type: ProductSpecificationSchema,
       default: () => ({}),
+    },
+
+    installation_fee: {
+      type: Number,
+      default: 0,
+      min: 0,
     },
   },
   {

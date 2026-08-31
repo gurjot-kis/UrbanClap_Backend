@@ -17,7 +17,7 @@ const categorySchema = new mongoose.Schema(
     level: {
       type: Number,
       required: true,
-      enum: [1, 2, 3],
+      enum: [1, 2, 3, 4],
       default: 1,
     },
 

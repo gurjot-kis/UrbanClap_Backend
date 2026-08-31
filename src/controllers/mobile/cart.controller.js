@@ -1,17 +1,27 @@
-import { CartService } from "../services/cart.service.js";
-import { resolveCartIdentity } from "../helpers/resolveCartIdentity.js";
-import { sendError, sendSuccess } from "../helpers/response.helper.js";
+import { CartService } from "../../services/cart.service.js";
+import { resolveCartIdentity } from "../../helpers/resolveCartIdentity.js";
+import { sendError, sendSuccess } from "../../helpers/response.helper.js";
 
 export const CartController = {
   addToCart: async (req, res) => {
     try {
       const identity = resolveCartIdentity(req, res);
-      const { product_id, variant_key, quantity } = req.body ?? {};
+      const {
+        product_id,
+        variant_key,
+        option_id,
+        quantity,
+        productType = "Service",
+      } = req.body ?? {};
+
+      const resolvedVariantKey =
+        productType === "NativeProduct" ? option_id : variant_key;
 
       const data = await CartService.addToCart(identity, {
         product_id,
-        variant_key,
+        variant_key: resolvedVariantKey,
         quantity,
+        productType,
       });
 
       return sendSuccess(res, {

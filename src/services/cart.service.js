@@ -1,5 +1,6 @@
 import Cart from "../models/cart.model.js";
 import Product from "../models/product.model.js";
+import NativeProduct from "../models/nativeProduct.model.js";
 import resolveDisplayCategories from "../helpers/resolveDisplayCategory.helper.js";
 import {
   computeCategoryCharges,
@@ -8,7 +9,6 @@ import {
 
 const GUEST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
-// ─── Internal: find or create the cart document for this identity ─────────────
 async function getOrCreateCart({ user_id, guestId }) {
   const filter = user_id ? { user_id } : { guestId };
 
@@ -21,20 +21,13 @@ async function getOrCreateCart({ user_id, guestId }) {
         : { guestId, expiresAt: new Date(Date.now() + GUEST_TTL_MS) },
     );
   } else if (!user_id) {
-    // Refresh TTL on every activity for guest carts
     cart.expiresAt = new Date(Date.now() + GUEST_TTL_MS);
   }
 
   return cart;
 }
 
-async function resolveProductLine(product_id, variant_key) {
-  console.log("resolveProductLine received:", {
-    product_id,
-    variant_key,
-    type: typeof variant_key,
-  });
-
+async function resolveRegularProduct(product_id, variant_key) {
   const product = await Product.findById(product_id)
     .select("name slug mainImage basePrice variants status")
     .lean()
@@ -89,26 +82,102 @@ async function resolveProductLine(product_id, variant_key) {
       image: matched.image ?? null,
     },
     unitPrice: matched.price,
+    installationFee: 0,
   };
+}
+
+async function resolveNativeProduct(product_id, option_id) {
+  const product = await NativeProduct.findById(product_id)
+    .select(
+      "product_name slug main_image base_price options status installation_fee",
+    )
+    .lean()
+    .exec();
+
+  if (!product) throw new Error("Product not found");
+  if (product.status !== "active") throw new Error("Product is not available");
+
+  const hasOptions = product.options.length > 0;
+
+  // Normalize snapshot to the same shape used by regular products
+  const snapshot = {
+    name: product.product_name,
+    slug: product.slug,
+    mainImage: product.main_image,
+  };
+
+  const installationFee = product.installation_fee ?? 0;
+
+  if (!hasOptions) {
+    if (option_id) throw new Error("This product has no options");
+    return {
+      snapshot,
+      variant: null,
+      unitPrice: product.base_price,
+      installationFee,
+    };
+  }
+
+  if (!option_id) {
+    throw new Error(
+      `This product requires an option. Available: ${product.options
+        .map((o) => `${o._id} (${o.label})`)
+        .join(", ")}`,
+    );
+  }
+
+  const matched = product.options.find(
+    (o) => o._id.toString() === option_id.toString(),
+  );
+
+  if (!matched) {
+    throw new Error(
+      `Option "${option_id}" not found. Available: ${product.options
+        .map((o) => o._id.toString())
+        .join(", ")}`,
+    );
+  }
+
+  return {
+    snapshot,
+    variant: {
+      key: matched._id.toString(),
+      label: matched.label,
+      price: matched.price,
+      image: matched.image ?? null,
+    },
+    unitPrice: matched.price,
+    installationFee,
+  };
+}
+
+async function resolveProductLine(product_id, variant_key, productType) {
+  if (productType === "NativeProduct") {
+    return resolveNativeProduct(product_id, variant_key);
+  }
+  return resolveRegularProduct(product_id, variant_key);
 }
 
 // ─── Public service methods ───────────────────────────────────────────────────
 export const CartService = {
   addToCart: async (
     { user_id, guestId },
-    { product_id, variant_key, quantity = 1 },
+    { product_id, variant_key, quantity = 1, productType = "Service" },
   ) => {
     if (!product_id) throw new Error("product_id is required");
+
+    const validTypes = ["Service", "NativeProduct"];
+    if (!validTypes.includes(productType)) {
+      throw new Error(`productType must be one of: ${validTypes.join(", ")}`);
+    }
 
     const qty = Number(quantity);
     if (!Number.isInteger(qty) || qty < 1) {
       throw new Error("quantity must be a positive integer");
     }
 
-    const { snapshot, variant, unitPrice } = await resolveProductLine(
-      product_id,
-      variant_key,
-    );
+    const { snapshot, variant, unitPrice, installationFee } =
+      await resolveProductLine(product_id, variant_key, productType);
 
     const cart = await getOrCreateCart({ user_id, guestId });
 
@@ -116,6 +185,7 @@ export const CartService = {
     const existingLine = cart.items.find(
       (i) =>
         i.product_id.toString() === product_id.toString() &&
+        i.productType === productType &&
         (i.variant?.key ?? null) === variantKeyMatch,
     );
 
@@ -127,9 +197,11 @@ export const CartService = {
     } else {
       cart.items.push({
         product_id,
+        productType,
         snapshot,
         variant,
         unitPrice,
+        installationFee,
         quantity: qty,
         lineTotal: 0,
       });
@@ -143,8 +215,10 @@ export const CartService = {
       addedItem: {
         item_id: affectedLine._id,
         product_id: affectedLine.product_id,
+        productType: affectedLine.productType,
         variant: affectedLine.variant,
         unitPrice: affectedLine.unitPrice,
+        installationFee: affectedLine.installationFee,
         quantity: affectedLine.quantity,
         lineTotal: affectedLine.lineTotal,
       },

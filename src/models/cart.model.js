@@ -14,8 +14,15 @@ const CartItemSchema = new mongoose.Schema(
   {
     product_id: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Product",
       required: true,
+      // ref: "Product", ** because it may be ref to product or native product
+    },
+
+    productType: {
+      type: String,
+      enum: ["Service", "NativeProduct"],
+      required: true,
+      default: "Service",
     },
 
     snapshot: {
@@ -30,10 +37,13 @@ const CartItemSchema = new mongoose.Schema(
     },
 
     unitPrice: { type: Number, required: true, min: 0 },
-
     quantity: { type: Number, required: true, min: 1, default: 1 },
-
     lineTotal: { type: Number, required: true, min: 0, default: 0 },
+    installationFee: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
   },
   {
     _id: true,
@@ -77,7 +87,10 @@ CartSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 CartSchema.methods.recalculate = function () {
   for (const item of this.items) {
-    item.lineTotal = +(item.unitPrice * item.quantity).toFixed(2);
+    item.lineTotal = +(
+      (item.unitPrice + item.installationFee) *
+      item.quantity
+    ).toFixed(2);
   }
   this.totalItems = this.items.reduce((sum, i) => sum + i.quantity, 0);
   this.totalPrice = +this.items
