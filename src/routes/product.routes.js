@@ -6,13 +6,6 @@ import { authorizeRoles, ROLES } from "../middlewares/role.middleware.js";
 
 const router = express.Router();
 
-//Mobile Apps
-router.get("/product/:id", ProductController.getProductById);
-router.get(
-  "/products-with-category/:category_id",
-  ProductController.getChildCategoriesWithProducts,
-);
-
 // Admin Panel
 router.get(
   "/admin/products",
@@ -39,5 +32,12 @@ router.patch(
   ProductController.updateProductStatus,
 );
 router.delete("/admin/product/:id", ProductController.deleteProduct);
+
+// temp 
+router.patch(
+  "/admin/product/:id/rating",
+  ProductController.updateProductRating,
+);
+
 
 export default router;

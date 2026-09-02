@@ -1,5 +1,5 @@
 import express from "express";
-import { PageContentController } from "../controllers/page-content.controller.js";
+import { PageContentController } from "../../controllers/mobile/index.controller.js";
 
 const router = express.Router();
 

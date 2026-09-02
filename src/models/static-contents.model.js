@@ -84,6 +84,12 @@ const PromotionalBannerContentSchema = new mongoose.Schema(
 
 const SpotlightContentSchema = new mongoose.Schema(
   {
+    status: {
+      type: String,
+      enum: ["active", "inactive"],
+      default: "active",
+    },
+
     image: {
       type: String,
       trim: true,
@@ -102,6 +108,11 @@ const SpotlightContentSchema = new mongoose.Schema(
     },
 
     redirectId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: undefined,
+    },
+
+    categoryId: {
       type: mongoose.Schema.Types.ObjectId,
       default: undefined,
     },
@@ -196,7 +207,7 @@ const DescriptionItemSchema = new mongoose.Schema(
       type: [String],
       default: undefined,
     },
-    
+
     slider_videos: {
       type: [SliderVideoDetailsSchema],
       default: undefined,

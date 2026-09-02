@@ -23,6 +23,12 @@ const resolveError = (res, err) => {
     "Status is required",
     "Invalid page number",
     "Invalid limit number",
+
+    // temp
+    "Rating average is required",
+    "Rating count is required",
+    "Invalid rating average",
+    "Invalid rating count",
   ];
 
   if (notFound.includes(msg)) {
@@ -35,37 +41,6 @@ const resolveError = (res, err) => {
 };
 
 export const ProductController = {
-  getProductById: async (req, res) => {
-    try {
-      const data = await ProductService.getProductById(req.params.id);
-      return sendSuccess(res, {
-        code: 200,
-        message: "Product fetched successfully",
-        data,
-      });
-    } catch (err) {
-      return resolveError(res, err);
-    }
-  },
-
-  getChildCategoriesWithProducts: async (req, res) => {
-    try {
-      const { category_id } = req.params;
-      const result = await ProductService.getChildCategoriesWithProducts(
-        category_id,
-        req.query,
-      );
-
-      return sendSuccess(res, {
-        code: 200,
-        message: "Categories with products fetched successfully",
-        data: result,
-      });
-    } catch (err) {
-      return resolveError(res, err);
-    }
-  },
-
   // ─── Admin Panel ────────────────────────────────────────────────────────
   getAllProducts: async (req, res) => {
     try {
@@ -133,6 +108,23 @@ export const ProductController = {
       return sendSuccess(res, {
         code: 200,
         message: "Product deleted successfully",
+        data,
+      });
+    } catch (err) {
+      return resolveError(res, err);
+    }
+  },
+
+  // temp api
+  updateProductRating: async (req, res) => {
+    try {
+      const data = await ProductService.updateProductRating(
+        req.params.id,
+        req.body,
+      );
+      return sendSuccess(res, {
+        code: 200,
+        message: "Product rating updated successfully",
         data,
       });
     } catch (err) {

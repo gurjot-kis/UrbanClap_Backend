@@ -651,6 +651,38 @@ if (variants !== undefined) {
       slug: product.slug,
     };
   },
+
+
+  // temp api 
+  updateProductRating: async (id, { average, count }) => {
+  if (!isValidObjectId(id)) throw new Error("Invalid product id");
+
+  if (average === undefined || average === null || average === "")
+    throw new Error("Rating average is required");
+  if (count === undefined || count === null || count === "")
+    throw new Error("Rating count is required");
+
+  const avg = Number(average);
+  const cnt = Number(count);
+
+  if (isNaN(avg) || avg < 0 || avg > 5)
+    throw new Error("Invalid rating average");
+  if (isNaN(cnt) || cnt < 0 || !Number.isInteger(cnt))
+    throw new Error("Invalid rating count");
+
+  const existing = await Product.findById(id).select("_id").lean().exec();
+  if (!existing) throw new Error("Product not found");
+
+  const updated = await Product.findByIdAndUpdate(
+    id,
+    { $set: { "rating.average": avg, "rating.count": cnt } },
+    { new: true, runValidators: true },
+  )
+    .lean()
+    .exec();
+
+  return mapProduct(updated);
+},
 };
 
 export default ProductService;
