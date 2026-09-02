@@ -728,6 +728,7 @@ export const CategoryService = {
       },
     };
   },
+
   getCategoryById: async (id) => {
     const categoryId = new mongoose.Types.ObjectId(id);
 

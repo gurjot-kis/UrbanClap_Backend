@@ -1,7 +1,5 @@
 import express from "express";
 import authRoutes from "./auth.routes.js";
-import categoryRoutes from "./category.routes.js";
-import productRoutes from "./product.routes.js";
 import userRoutes from "./user.routes.js";
 import adminRoutes from "./admin.routes.js";
 import addressRoutes from "./address.routes.js";
@@ -19,8 +17,6 @@ router.get("/", (req, res) => {
 });
 
 router.use(authRoutes);
-router.use("/categories", categoryRoutes);
-router.use(productRoutes);
 router.use(userRoutes);
 router.use("/admin", adminRoutes);
 router.use("/address", addressRoutes);

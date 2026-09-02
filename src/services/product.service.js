@@ -19,13 +19,15 @@ const mapProduct = (p, category = null) => ({
   vendor_id: p.vendor_id,
   basePrice: p.basePrice,
   variantLabel: p.variantLabel,
-  variants: (p.variants || []).map(({ key, label, price,costPrice, image }) => ({
-    key,
-    label,
-    price,
-    costPrice,
-    image
-  })),
+  variants: (p.variants || []).map(
+    ({ key, label, price, costPrice, image }) => ({
+      key,
+      label,
+      price,
+      costPrice,
+      image,
+    }),
+  ),
   durationMinutes: p.durationMinutes,
   rating: p.rating,
   maxQuantity: p.maxQuantity,
@@ -82,6 +84,28 @@ const buildVariantKey = (label, existingKey, seenKeys) => {
   }
   seenKeys.add(finalKey);
   return finalKey;
+};
+
+const isDescendantOf = async (subCategoryId, ancestorId) => {
+  let currentId = subCategoryId;
+  const visited = new Set();
+
+  while (currentId) {
+    if (visited.has(String(currentId))) break;
+    visited.add(String(currentId));
+
+    const node = await Category.findById(currentId)
+      .select("parent_id")
+      .lean()
+      .exec();
+
+    if (!node) return false;
+    if (String(node.parent_id) === String(ancestorId)) return true;
+
+    currentId = node.parent_id;
+  }
+
+  return false;
 };
 
 export const ProductService = {
@@ -161,7 +185,6 @@ export const ProductService = {
     };
   },
 
-  // ─── Admin Panel ────────────────────────────────────────────────────────
   getAllProducts: async ({
     page = 1,
     limit = 10,
@@ -330,12 +353,11 @@ export const ProductService = {
       const subCategory = await Category.findById(sub_category_id)
         .lean()
         .exec();
-      if (
-        !subCategory ||
-        String(subCategory.parent_id) !== String(category_id)
-      ) {
+      if (!subCategory)
         throw new Error("Sub-category not found in this category");
-      }
+
+      const isChild = await isDescendantOf(sub_category_id, category_id);
+      if (!isChild) throw new Error("Sub-category not found in this category");
     }
 
     // ── Files ──
@@ -347,7 +369,6 @@ export const ProductService = {
       relativeUploadPath("products", f.filename),
     );
 
-    // ── Parse JSON-ish fields sent as strings via formdata ──
     const parsedIncludes = parseMaybeJSON(includes, "includes") || [];
     const parsedVariants = parseMaybeJSON(variants, "variants") || [];
     const parsedVariantImageSlots =
@@ -360,10 +381,6 @@ export const ProductService = {
     if (!Array.isArray(parsedVariantImageSlots))
       throw new Error("Invalid variantImageSlots format");
 
-    // Each uploaded file in files.variantImages corresponds, in order, to
-    // the position (in parsedVariants) recorded at the same index in
-    // parsedVariantImageSlots. This is a direct file<->variant map — no
-    // shared pool, no index that can drift.
     const variantImageFiles = files?.variantImages || [];
     const variantImageBySlot = new Map();
     parsedVariantImageSlots.forEach((slot, i) => {
@@ -463,22 +480,21 @@ export const ProductService = {
     ) {
       if (!isValidObjectId(sub_category_id))
         throw new Error("Invalid sub_category_id");
+
       const subCategory = await Category.findById(sub_category_id)
         .lean()
         .exec();
-      if (
-        !subCategory ||
-        String(subCategory.parent_id) !== String(resolvedCategoryId)
-      ) {
+      if (!subCategory)
         throw new Error("Sub-category not found in this category");
-      }
+
+      const isChild = await isDescendantOf(sub_category_id, resolvedCategoryId);
+      if (!isChild) throw new Error("Sub-category not found in this category");
     }
 
     if (vendor_id !== undefined && vendor_id !== null && vendor_id !== "") {
       if (!isValidObjectId(vendor_id)) throw new Error("Invalid vendor_id");
     }
 
-    // ── Slug (only if name or slug changed) ──
     let slug = existing.slug;
     if (slugInput || name) {
       const newSlug = slugify(slugInput || name);
@@ -493,79 +509,102 @@ export const ProductService = {
         slug = newSlug;
       }
     }
-// ... inside updateProduct: async (id, body, files = {}) =>
 
-// ── 1. Main Image Handling ──
-const mainImageFile = files?.mainImage?.[0];
-let mainImage = existing.mainImage;
+    // ── 1. Main Image Handling ──
+    const mainImageFile = files?.mainImage?.[0];
+    let mainImage = existing.mainImage;
 
-if (mainImageFile) {
-  mainImage = relativeUploadPath("products", mainImageFile.filename);
-} else if (body.existingMainImage !== undefined) {
-  // Retains existing URL/path or sets to null/empty if cleared
-  mainImage = body.existingMainImage || null;
-}
-
-// ── 2. Featured Images Handling ──
-// Keep retained existing images sent from frontend + append any newly uploaded files
-const retainedExistingImages = parseMaybeJSON(body.existingFeaturedImages, "existingFeaturedImages") || [];
-const featuredFiles = files?.featuredImages || [];
-const newFeaturedImages = featuredFiles.map((f) => relativeUploadPath("products", f.filename));
-
-const images =
-  body.existingFeaturedImages !== undefined || featuredFiles.length > 0
-    ? [...retainedExistingImages, ...newFeaturedImages]
-    : existing.images;
-
-// ── 3. Variant Images Handling ──
-const parsedVariantImageSlots = parseMaybeJSON(variantImageSlots, "variantImageSlots") || [];
-const variantImageFiles = files?.variantImages || [];
-const variantImageBySlot = new Map();
-
-parsedVariantImageSlots.forEach((slot, i) => {
-  const file = variantImageFiles[i];
-  if (file) {
-    variantImageBySlot.set(slot, relativeUploadPath("products/variants", file.filename));
-  }
-});
-
-let finalVariants = existing.variants;
-
-if (variants !== undefined) {
-  const parsedVariants = parseMaybeJSON(variants, "variants");
-  if (!Array.isArray(parsedVariants)) throw new Error("Invalid variants format");
-
-  const existingVariantMap = new Map(existing.variants.map((v) => [v.key, v]));
-  const seenKeys = new Set(existing.variants.map((v) => v.key));
-
-  finalVariants = parsedVariants.map((incoming, i) => {
-    // If a new file is uploaded for this slot, use it;
-    // otherwise use incoming.image (which can be null if removed or a path if kept)
-    const newImage = variantImageBySlot.get(i);
-    const image = newImage !== undefined ? newImage : (incoming.image ?? null);
-
-    const existingVariant = incoming.key ? existingVariantMap.get(incoming.key) : null;
-
-    if (existingVariant) {
-      return {
-        key: existingVariant.key,
-        label: incoming.label !== undefined ? incoming.label : existingVariant.label,
-        price: incoming.price !== undefined ? Number(incoming.price) : existingVariant.price,
-        costPrice: incoming.costPrice !== undefined ? Number(incoming.costPrice) : existingVariant.costPrice,
-        image,
-      };
-    } else {
-      const newKey = buildVariantKey(incoming.label, incoming.key, seenKeys);
-      return {
-        key: newKey,
-        label: incoming.label,
-        price: Number(incoming.price),
-        costPrice: Number(incoming.costPrice),
-        image,
-      };
+    if (mainImageFile) {
+      mainImage = relativeUploadPath("products", mainImageFile.filename);
+    } else if (body.existingMainImage !== undefined) {
+      mainImage = body.existingMainImage || null;
     }
-  });
-}
+
+    const retainedExistingImages =
+      parseMaybeJSON(body.existingFeaturedImages, "existingFeaturedImages") ||
+      [];
+    const featuredFiles = files?.featuredImages || [];
+    const newFeaturedImages = featuredFiles.map((f) =>
+      relativeUploadPath("products", f.filename),
+    );
+
+    const images =
+      body.existingFeaturedImages !== undefined || featuredFiles.length > 0
+        ? [...retainedExistingImages, ...newFeaturedImages]
+        : existing.images;
+
+    // ── 3. Variant Images Handling ──
+    const parsedVariantImageSlots =
+      parseMaybeJSON(variantImageSlots, "variantImageSlots") || [];
+    const variantImageFiles = files?.variantImages || [];
+    const variantImageBySlot = new Map();
+
+    parsedVariantImageSlots.forEach((slot, i) => {
+      const file = variantImageFiles[i];
+      if (file) {
+        variantImageBySlot.set(
+          slot,
+          relativeUploadPath("products/variants", file.filename),
+        );
+      }
+    });
+
+    let finalVariants = existing.variants;
+
+    if (variants !== undefined) {
+      const parsedVariants = parseMaybeJSON(variants, "variants");
+      if (!Array.isArray(parsedVariants))
+        throw new Error("Invalid variants format");
+
+      const existingVariantMap = new Map(
+        existing.variants.map((v) => [v.key, v]),
+      );
+      const seenKeys = new Set(existing.variants.map((v) => v.key));
+
+      finalVariants = parsedVariants.map((incoming, i) => {
+        // If a new file is uploaded for this slot, use it;
+        // otherwise use incoming.image (which can be null if removed or a path if kept)
+        const newImage = variantImageBySlot.get(i);
+        const image =
+          newImage !== undefined ? newImage : (incoming.image ?? null);
+
+        const existingVariant = incoming.key
+          ? existingVariantMap.get(incoming.key)
+          : null;
+
+        if (existingVariant) {
+          return {
+            key: existingVariant.key,
+            label:
+              incoming.label !== undefined
+                ? incoming.label
+                : existingVariant.label,
+            price:
+              incoming.price !== undefined
+                ? Number(incoming.price)
+                : existingVariant.price,
+            costPrice:
+              incoming.costPrice !== undefined
+                ? Number(incoming.costPrice)
+                : existingVariant.costPrice,
+            image,
+          };
+        } else {
+          const newKey = buildVariantKey(
+            incoming.label,
+            incoming.key,
+            seenKeys,
+          );
+          return {
+            key: newKey,
+            label: incoming.label,
+            price: Number(incoming.price),
+            costPrice: Number(incoming.costPrice),
+            image,
+          };
+        }
+      });
+    }
     // ────────────────────────────────────────────────────────────────────────
     // BUILD UPDATE PAYLOAD — only include fields that were actually sent
     // ────────────────────────────────────────────────────────────────────────
@@ -652,37 +691,36 @@ if (variants !== undefined) {
     };
   },
 
-
-  // temp api 
+  // temp api
   updateProductRating: async (id, { average, count }) => {
-  if (!isValidObjectId(id)) throw new Error("Invalid product id");
+    if (!isValidObjectId(id)) throw new Error("Invalid product id");
 
-  if (average === undefined || average === null || average === "")
-    throw new Error("Rating average is required");
-  if (count === undefined || count === null || count === "")
-    throw new Error("Rating count is required");
+    if (average === undefined || average === null || average === "")
+      throw new Error("Rating average is required");
+    if (count === undefined || count === null || count === "")
+      throw new Error("Rating count is required");
 
-  const avg = Number(average);
-  const cnt = Number(count);
+    const avg = Number(average);
+    const cnt = Number(count);
 
-  if (isNaN(avg) || avg < 0 || avg > 5)
-    throw new Error("Invalid rating average");
-  if (isNaN(cnt) || cnt < 0 || !Number.isInteger(cnt))
-    throw new Error("Invalid rating count");
+    if (isNaN(avg) || avg < 0 || avg > 5)
+      throw new Error("Invalid rating average");
+    if (isNaN(cnt) || cnt < 0 || !Number.isInteger(cnt))
+      throw new Error("Invalid rating count");
 
-  const existing = await Product.findById(id).select("_id").lean().exec();
-  if (!existing) throw new Error("Product not found");
+    const existing = await Product.findById(id).select("_id").lean().exec();
+    if (!existing) throw new Error("Product not found");
 
-  const updated = await Product.findByIdAndUpdate(
-    id,
-    { $set: { "rating.average": avg, "rating.count": cnt } },
-    { new: true, runValidators: true },
-  )
-    .lean()
-    .exec();
+    const updated = await Product.findByIdAndUpdate(
+      id,
+      { $set: { "rating.average": avg, "rating.count": cnt } },
+      { new: true, runValidators: true },
+    )
+      .lean()
+      .exec();
 
-  return mapProduct(updated);
-},
+    return mapProduct(updated);
+  },
 };
 
 export default ProductService;

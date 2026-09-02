@@ -1,11 +1,15 @@
 import Cart from "../models/cart.model.js";
 import Product from "../models/product.model.js";
 import NativeProduct from "../models/nativeProduct.model.js";
-import resolveDisplayCategories from "../helpers/resolveDisplayCategory.helper.js";
+import {
+  resolveDisplayCategories,
+  resolveNativeDisplayCategories,
+} from "../helpers/resolveDisplayCategory.helper.js";
 import {
   computeCategoryCharges,
   roundToNearest,
 } from "../helpers/cartTax.helper.js";
+import mongoose from "mongoose";
 
 const GUEST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -232,9 +236,7 @@ export const CartService = {
   getCart: async ({ user_id, guestId }) => {
     const filter = user_id ? { user_id } : { guestId };
 
-    if (!user_id && !guestId) {
-      throw new Error("No cart identity found");
-    }
+    if (!user_id && !guestId) throw new Error("No cart identity found");
 
     const cart = await Cart.findOne(filter).exec();
 
@@ -248,25 +250,70 @@ export const CartService = {
       };
     }
 
-    const productIds = [
-      ...new Set(cart.items.map((i) => i.product_id.toString())),
+    // ── Split items by productType ──────────────────────────────────────────
+    const serviceItemIds = [
+      ...new Set(
+        cart.items
+          .filter((i) => i.productType === "Service")
+          .map((i) => i.product_id.toString()),
+      ),
     ];
 
-    const products = await Product.find({ _id: { $in: productIds } })
-      .select("category_id sub_category_id")
-      .lean()
-      .exec();
+    const nativeItemIds = [
+      ...new Set(
+        cart.items
+          .filter((i) => i.productType === "NativeProduct")
+          .map((i) => i.product_id.toString()),
+      ),
+    ];
 
-    const productCategoryFields = products.map((p) => ({
-      _id: p._id,
-      category_id: p.category_id,
-      sub_category_id: p.sub_category_id,
-    }));
+    // ── Fetch category fields from each collection in parallel ──────────────
+    const [serviceProducts, nativeProducts] = await Promise.all([
+      serviceItemIds.length
+        ? Product.find({ _id: { $in: serviceItemIds } })
+            .select("category_id sub_category_id")
+            .lean()
+            .exec()
+        : [],
+      nativeItemIds.length
+        ? NativeProduct.find({ _id: { $in: nativeItemIds } })
+            .select("category_id sub_category_id")
+            .lean()
+            .exec()
+        : [],
+    ]);
 
-    const categoryResolution = await resolveDisplayCategories(
-      productCategoryFields,
-    );
+    // ── Resolve display categories for each group ───────────────────────────
+    // resolveDisplayCategories works by _id lookup — call it per collection
+    // so it uses the right Category vs NativeCategory refs internally
+    const [serviceCategoryMap, nativeCategoryMap] = await Promise.all([
+      serviceProducts.length
+        ? resolveDisplayCategories(
+            serviceProducts.map((p) => ({
+              _id: p._id,
+              category_id: p.category_id,
+              sub_category_id: p.sub_category_id,
+            })),
+          )
+        : new Map(),
+      nativeProducts.length
+        ? resolveNativeDisplayCategories(
+            nativeProducts.map((p) => ({
+              _id: p._id,
+              category_id: p.category_id,
+              sub_category_id: p.sub_category_id,
+            })),
+          )
+        : new Map(),
+    ]);
 
+    // ── Merge both maps into one keyed by product_id string ─────────────────
+    const categoryResolution = new Map([
+      ...serviceCategoryMap,
+      ...nativeCategoryMap,
+    ]);
+
+    // ── Group items (rest of logic unchanged) ───────────────────────────────
     const groupsMap = new Map();
 
     for (const item of cart.items) {
@@ -290,9 +337,11 @@ export const CartService = {
       groupsMap.get(categoryKey).items.push({
         item_id: item._id,
         product_id: item.product_id,
+        productType: item.productType,
         snapshot: item.snapshot,
         variant: item.variant,
         unitPrice: item.unitPrice,
+        installationFee: item.installationFee,
         quantity: item.quantity,
         lineTotal: item.lineTotal,
       });
@@ -356,6 +405,12 @@ export const CartService = {
   decrementItem: async ({ user_id, guestId }, { item_id, quantity = 1 }) => {
     if (!item_id) throw new Error("item_id is required");
 
+    if (!mongoose.Types.ObjectId.isValid(item_id)) {
+      throw new Error("Invalid item_id format");
+    }
+
+    const itemObjectId = new mongoose.Types.ObjectId(item_id);
+
     const qty = Number(quantity);
     if (!Number.isInteger(qty) || qty < 1) {
       throw new Error("quantity must be a positive integer");
@@ -367,13 +422,13 @@ export const CartService = {
     const cart = await Cart.findOne(filter).exec();
     if (!cart) throw new Error("Cart not found");
 
-    const line = cart.items.id(item_id);
+    const line = cart.items.id(itemObjectId);
     if (!line) throw new Error("Cart item not found");
 
     let itemRemoved = false;
 
     if (line.quantity - qty <= 0) {
-      cart.items.pull({ _id: item_id });
+      cart.items.pull({ _id: itemObjectId });
       itemRemoved = true;
     } else {
       line.quantity -= qty;

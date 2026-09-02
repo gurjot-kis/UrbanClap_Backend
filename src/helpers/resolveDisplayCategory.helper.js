@@ -1,6 +1,7 @@
 import Category from "../models/category.model.js";
+import NativeCategory from "../models/nativeCategory.model.js";
 
-export async function resolveDisplayCategories(products) {
+async function resolveDisplayCategoriesWithModel(products, CategoryModel) {
   const subCategoryIds = [
     ...new Set(
       products
@@ -10,7 +11,7 @@ export async function resolveDisplayCategories(products) {
   ];
 
   const subCategories = subCategoryIds.length
-    ? await Category.find({ _id: { $in: subCategoryIds } })
+    ? await CategoryModel.find({ _id: { $in: subCategoryIds } })
         .select("_id parent_id")
         .lean()
         .exec()
@@ -39,7 +40,7 @@ export async function resolveDisplayCategories(products) {
   }
 
   const categories = displayCategoryIds.size
-    ? await Category.find({ _id: { $in: [...displayCategoryIds] } })
+    ? await CategoryModel.find({ _id: { $in: [...displayCategoryIds] } })
         .select("_id name")
         .lean()
         .exec()
@@ -68,6 +69,15 @@ export async function resolveDisplayCategories(products) {
   }
 
   return resolution;
+}
+
+// Named exports — each caller uses the right one, no changes needed at existing call sites
+export async function resolveDisplayCategories(products) {
+  return resolveDisplayCategoriesWithModel(products, Category);
+}
+
+export async function resolveNativeDisplayCategories(products) {
+  return resolveDisplayCategoriesWithModel(products, NativeCategory);
 }
 
 export default resolveDisplayCategories;

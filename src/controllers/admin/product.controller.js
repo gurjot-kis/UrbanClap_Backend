@@ -1,5 +1,5 @@
-import { sendError, sendSuccess } from "../helpers/response.helper.js";
-import { ProductService } from "../services/product.service.js";
+import { sendError, sendSuccess } from "../../helpers/response.helper.js";
+import ProductService from "../../services/product.service.js";
 
 const resolveError = (res, err) => {
   const msg = err?.message || "Something went wrong";
@@ -24,7 +24,6 @@ const resolveError = (res, err) => {
     "Invalid page number",
     "Invalid limit number",
 
-    // temp
     "Rating average is required",
     "Rating count is required",
     "Invalid rating average",
@@ -41,7 +40,6 @@ const resolveError = (res, err) => {
 };
 
 export const ProductController = {
-  // ─── Admin Panel ────────────────────────────────────────────────────────
   getAllProducts: async (req, res) => {
     try {
       const result = await ProductService.getAllProducts(req.query);
@@ -50,6 +48,19 @@ export const ProductController = {
         message: "Products fetched successfully",
         data: result.data,
         pagination: result.pagination,
+      });
+    } catch (err) {
+      return resolveError(res, err);
+    }
+  },
+
+  getProductById: async (req, res) => {
+    try {
+      const data = await ProductService.getProductById(req.params.id);
+      return sendSuccess(res, {
+        code: 200,
+        message: "Product fetched successfully",
+        data,
       });
     } catch (err) {
       return resolveError(res, err);
@@ -115,7 +126,6 @@ export const ProductController = {
     }
   },
 
-  // temp api
   updateProductRating: async (req, res) => {
     try {
       const data = await ProductService.updateProductRating(
