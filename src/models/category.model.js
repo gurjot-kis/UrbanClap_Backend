@@ -33,6 +33,10 @@ const categorySchema = new mongoose.Schema(
       trim: true,
     },
 
+    sort_order: {
+      type: Number,
+    },
+
     status: {
       type: String,
       enum: ["active", "inactive"],
@@ -44,9 +48,9 @@ const categorySchema = new mongoose.Schema(
       allowSchedule: { type: Boolean, default: true },
 
       instant: {
-        duration: { type: Number, default: 60 }, // service duration in minutes
-        bufferTime: { type: Number, default: 30 }, // vendor travel/reach buffer
-        searchRadiusKm: { type: Number, default: 10 }, // radius to find nearby vendor
+        duration: { type: Number, default: 60 },
+        bufferTime: { type: Number, default: 30 },
+        searchRadiusKm: { type: Number, default: 10 },
       },
 
       schedule: {

@@ -9,6 +9,6 @@ router.use(optionalAuthMiddleware);
 router.get("/", CartController.getCart);
 router.post("/add", CartController.addToCart);
 router.patch("/:item_id/decrement", CartController.decrementItem);
-router.delete("/:item_id", CartController.removeItem);
+router.delete("/clear", CartController.clearCart);
 
 export default router;

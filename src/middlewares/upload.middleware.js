@@ -73,12 +73,6 @@ export const uploadCategoryImage = multer({
   limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB per file
 }).single("category_image");
 
-export const uploadSubCategoryImage = multer({
-  storage: createStorage("sub-categories"),
-  fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB per file
-}).single("sub_category_image");
-
 export const uploadAdminProfilePicture = multer({
   storage: createStorage("admin"),
   fileFilter,
@@ -97,8 +91,4 @@ export const uploadBannerImage = multer({
   limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB per file
 }).single("banner_image");
 
-export const uploadWarehouseImage = multer({
-  storage: createStorage("warehouses"),
-  fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB per file
-}).single("warehouse_image");
+

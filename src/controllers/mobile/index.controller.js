@@ -5,6 +5,8 @@ import { NativeCategoryController } from "./native-category.controller.js";
 import { CartController } from "./cart.controller.js";
 import { ProductController } from "./product.controller.js";
 import { PageContentController } from "./page-content.controller.js";
+import { AddressController } from "./address.controller.js";
+import { NativeProductController } from "./native-product.controller.js";
 
 export {
   UserController,
@@ -14,4 +16,6 @@ export {
   CartController,
   ProductController,
   PageContentController,
+  AddressController,
+  NativeProductController,
 };

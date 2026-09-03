@@ -1,26 +1,7 @@
-import { sendError, sendSuccess } from "../helpers/response.helper.js";
-import { AddressService } from "../services/address.service.js";
+import { sendError, sendSuccess } from "../../helpers/response.helper.js";
+import AddressService from "../../services/address.service.js";
 
 export const AddressController = {
-  addAddress: async (req, res) => {
-    try {
-      const userId = req.user?._id;
-      const data = await AddressService.addAddress(userId, req.body || {});
-
-      return sendSuccess(res, {
-        code: 200,
-        message: "Address added successfully",
-        data,
-      });
-    } catch (err) {
-      return sendError(res, {
-        code: err.statusCode || 400,
-        message: err.message || "Unable to add address",
-        error: err.message || null,
-      });
-    }
-  },
-
   listAddresses: async (req, res) => {
     try {
       const userId = req.user?._id;
@@ -35,6 +16,25 @@ export const AddressController = {
       return sendError(res, {
         code: err.statusCode || 400,
         message: err.message || "Unable to fetch addresses",
+        error: err.message || null,
+      });
+    }
+  },
+
+  addAddress: async (req, res) => {
+    try {
+      const userId = req.user?._id;
+      const data = await AddressService.addAddress(userId, req.body || {});
+
+      return sendSuccess(res, {
+        code: 200,
+        message: "Address added successfully",
+        data,
+      });
+    } catch (err) {
+      return sendError(res, {
+        code: err.statusCode || 400,
+        message: err.message || "Unable to add address",
         error: err.message || null,
       });
     }

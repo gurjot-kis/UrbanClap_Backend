@@ -378,6 +378,16 @@ export const CategoryService = {
         },
       },
       {
+        $addFields: {
+          _sortOrder: {
+            $ifNull: ["$sort_order", 999999], // push nulls to end
+          },
+        },
+      },
+      {
+        $sort: { _sortOrder: 1, createdAt: 1 },
+      },
+      {
         $lookup: {
           from: "categories",
           let: { parentId: "$_id" },
@@ -388,6 +398,7 @@ export const CategoryService = {
                 status: "active",
               },
             },
+            { $sort: { createdAt: 1 } },
 
             // Level 3
             {
@@ -401,6 +412,7 @@ export const CategoryService = {
                       status: "active",
                     },
                   },
+                  { $sort: { createdAt: 1 } },
 
                   // ✅ Level 4
                   {
@@ -414,6 +426,7 @@ export const CategoryService = {
                             status: "active",
                           },
                         },
+                        { $sort: { createdAt: 1 } },
                         {
                           $project: {
                             name: 1,
@@ -435,7 +448,7 @@ export const CategoryService = {
                       description: 1,
                       category_image: 1,
                       status: 1,
-                      children: 1, // ✅ must include children
+                      children: 1,
                     },
                   },
                 ],

@@ -376,32 +376,6 @@ export const CartService = {
     };
   },
 
-  removeItem: async ({ user_id, guestId }, { item_id }) => {
-    if (!item_id) throw new Error("item_id is required");
-
-    const filter = user_id ? { user_id } : { guestId };
-    if (!user_id && !guestId) throw new Error("No cart identity found");
-
-    const cart = await Cart.findOne(filter).exec();
-    if (!cart) throw new Error("Cart not found");
-
-    const line = cart.items.id(item_id);
-    if (!line) throw new Error("Cart item not found");
-
-    cart.items.pull({ _id: item_id });
-    cart.recalculate();
-    await cart.save();
-
-    return {
-      removedItemId: item_id,
-      itemRemoved: true,
-      cartSummary: {
-        totalItems: cart.totalItems,
-        totalPrice: cart.totalPrice,
-      },
-    };
-  },
-
   decrementItem: async ({ user_id, guestId }, { item_id, quantity = 1 }) => {
     if (!item_id) throw new Error("item_id is required");
 
@@ -442,6 +416,26 @@ export const CartService = {
       itemRemoved,
       quantity: itemRemoved ? 0 : line.quantity,
       lineTotal: itemRemoved ? 0 : line.lineTotal,
+      cartSummary: {
+        totalItems: cart.totalItems,
+        totalPrice: cart.totalPrice,
+      },
+    };
+  },
+
+  clearCart: async ({ user_id, guestId }) => {
+    const filter = user_id ? { user_id } : { guestId };
+    if (!user_id && !guestId) throw new Error("No cart identity found");
+
+    const cart = await Cart.findOne(filter).exec();
+    if (!cart) throw new Error("Cart not found");
+
+    cart.items = [];
+    cart.recalculate();
+    await cart.save();
+
+    return {
+      cleared: true,
       cartSummary: {
         totalItems: cart.totalItems,
         totalPrice: cart.totalPrice,

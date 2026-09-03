@@ -1,5 +1,5 @@
-import { sendError, sendSuccess } from "../helpers/response.helper.js";
-import NativeProductService from "../services/native-products.service.js";
+import { sendError, sendSuccess } from "../../helpers/response.helper.js";
+import NativeProductService from "../../services/native-products.service.js";
 
 export const NativeProductController = {
   fetchNativeProductsForMobile: async (req, res) => {

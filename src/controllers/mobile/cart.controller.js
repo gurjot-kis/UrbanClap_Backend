@@ -59,26 +59,6 @@ export const CartController = {
     }
   },
 
-  removeItem: async (req, res) => {
-    try {
-      const identity = resolveCartIdentity(req, res);
-      const { item_id } = req.params;
-
-      const data = await CartService.removeItem(identity, { item_id });
-
-      return sendSuccess(res, {
-        code: 200,
-        message: "Item removed from cart successfully",
-        data,
-      });
-    } catch (err) {
-      const msg = err?.message || "Unable to remove item from cart";
-      const code =
-        msg === "Cart item not found" || msg === "Cart not found" ? 404 : 400;
-      return sendError(res, { code, message: msg });
-    }
-  },
-
   decrementItem: async (req, res) => {
     try {
       const identity = resolveCartIdentity(req, res);
@@ -101,6 +81,24 @@ export const CartController = {
       const msg = err?.message || "Unable to update cart item";
       const code =
         msg === "Cart item not found" || msg === "Cart not found" ? 404 : 400;
+      return sendError(res, { code, message: msg });
+    }
+  },
+
+  clearCart: async (req, res) => {
+    try {
+      const identity = resolveCartIdentity(req, res);
+      console.log("clearCart: identity:", identity);
+      const data = await CartService.clearCart(identity);
+
+      return sendSuccess(res, {
+        code: 200,
+        message: "Cart cleared successfully",
+        data,
+      });
+    } catch (err) {
+      const msg = err?.message || "Unable to clear cart";
+      const code = msg === "Cart not found" ? 404 : 400;
       return sendError(res, { code, message: msg });
     }
   },
