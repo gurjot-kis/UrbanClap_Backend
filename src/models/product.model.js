@@ -135,6 +135,14 @@ ProductSchema.index({ status: 1 });
 ProductSchema.index({ basePrice: 1 });
 ProductSchema.index({ "rating.average": -1 });
 
+ProductSchema.index(
+  { name: "text", description: "text", shortDescription: "text" },
+  {
+    weights: { name: 10, shortDescription: 5, description: 1 },
+    name: "product_text_idx",
+  },
+);
+
 // ─── Model ───────────────────────────────────────────────────────────────────
 
 const Product = mongoose.model("Product", ProductSchema);

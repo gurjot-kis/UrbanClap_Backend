@@ -7,6 +7,7 @@ import { ProductController } from "./product.controller.js";
 import { PageContentController } from "./page-content.controller.js";
 import { AddressController } from "./address.controller.js";
 import { NativeProductController } from "./native-product.controller.js";
+import { SearchController } from "./search.controller.js";
 
 export {
   UserController,
@@ -18,4 +19,5 @@ export {
   PageContentController,
   AddressController,
   NativeProductController,
+  SearchController,
 };

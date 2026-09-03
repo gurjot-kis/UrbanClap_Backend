@@ -8,6 +8,7 @@ import ProductRoutes from "./product.routes.js";
 import PageContentRoutes from "./page-content.routes.js";
 import AddressRoutes from "./address.routes.js";
 import NativeProductRoutes from "./native-products.routes.js";
+import SearchRoutes from "./search.routes.js";
 
 const router = express.Router();
 
@@ -20,5 +21,6 @@ router.use("/native-product", NativeProductRoutes);
 router.use("/cart", CartRoutes);
 router.use("/address", AddressRoutes);
 router.use(PageContentRoutes);
+router.use("/search", SearchRoutes);
 
 export default router;

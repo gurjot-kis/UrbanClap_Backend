@@ -158,5 +158,10 @@ NativeProductSchema.index({ sub_category_id: 1 });
 NativeProductSchema.index({ status: 1 });
 NativeProductSchema.index({ "rating.average": -1 });
 
+NativeProductSchema.index(
+  { product_name: "text" },
+  { weights: { product_name: 10 }, name: "native_product_text_idx" },
+);
+
 const NativeProduct = mongoose.model("NativeProduct", NativeProductSchema);
 export default NativeProduct;
