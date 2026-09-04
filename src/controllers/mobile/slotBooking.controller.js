@@ -5,6 +5,7 @@ export const SlotbookingController = {
   fetchAvailableSlots: async (req, res) => {
     try {
       const userId = req.user._id;
+      console.log("UserId <><><", userId);
       const { category_id } = req.query;
 
       const result = await SlotBookingService.getMobileSlots(
