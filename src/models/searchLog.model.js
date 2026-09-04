@@ -10,7 +10,7 @@ const SearchLogSchema = new mongoose.Schema(
       enum: ["service", "native", "both"],
       default: "both",
     },
-  },
+  },  
   { timestamps: true, versionKey: false },
 );
 

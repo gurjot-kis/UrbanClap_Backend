@@ -1,23 +1,24 @@
-import * as slotBookingService from "../services/slotBooking.service.js";
+import { sendError, sendSuccess } from "../helpers/response.helper.js";
+import slotBookingService from "../services/slotBooking.service.js";
 
 export const addSlotBooking = async (req, res) => {
   try {
-    const userId = req.user._id; 
+    const userId = req.user._id;
     const booking = await slotBookingService.createSlotBooking(
       userId,
       req.body,
     );
-    return res.status(200).json({
-      success: true,
-      statusCode: 201,
+
+    return sendSuccess(res, {
+      code: 201,
       message: "Booking created successfully",
       data: booking,
     });
   } catch (err) {
-    return res.status(200).json({
-      success: false,
-      statusCode: err.statusCode || 500,
+    return sendError(res, {
+      code: err.statusCode || 500,
       message: err.message || "Something went wrong",
+      error: err.message,
     });
   }
 };
@@ -25,18 +26,17 @@ export const addSlotBooking = async (req, res) => {
 export const getAllSlotBookings = async (req, res) => {
   try {
     const result = await slotBookingService.getAllSlotBookings(req.query);
-    return res.status(200).json({
-      success: true,
-      statusCode: 200,
+    return sendSuccess(res, {
+      code: 200,
       message: "Bookings fetched successfully",
       data: result.bookings,
       pagination: result.pagination,
     });
   } catch (err) {
-    return res.status(200).json({
-      success: false,
-      statusCode: err.statusCode || 500,
+    return sendError(res, {
+      code: err.statusCode || 500,
       message: err.message || "Something went wrong",
+      error: err.message,
     });
   }
 };
@@ -47,17 +47,16 @@ export const updateSlotBooking = async (req, res) => {
       req.params.id,
       req.body,
     );
-    return res.status(200).json({
-      success: true,
-      statusCode: 200,
+    return sendSuccess(res, {
+      code: 200,
       message: "Booking updated successfully",
       data: booking,
     });
   } catch (err) {
-    return res.status(200).json({
-      success: false,
-      statusCode: err.statusCode || 500,
+    return sendError(res, {
+      code: err.statusCode || 500,
       message: err.message || "Something went wrong",
+      error: err.message,
     });
   }
 };
@@ -69,17 +68,16 @@ export const deleteSlotBooking = async (req, res) => {
       req.params.id,
       force,
     );
-    return res.status(200).json({
-      success: true,
-      statusCode: 200,
+    return sendSuccess(res, {
+      code: 200,
       message: "Booking deleted successfully",
       data: booking,
     });
   } catch (err) {
-    return res.status(200).json({
-      success: false,
-      statusCode: err.statusCode || 500,
+    return sendError(res, {
+      code: err.statusCode || 500,
       message: err.message || "Something went wrong",
+      error: err.message,
     });
   }
 };

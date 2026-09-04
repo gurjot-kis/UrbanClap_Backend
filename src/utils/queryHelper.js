@@ -13,15 +13,22 @@ export async function expandSynonyms(query) {
   const cache = await getSynonymCache();
   const words = query.toLowerCase().split(/\s+/);
 
-  const allTerms = new Set([query]); // always keep original
+  const allTerms = new Set();
 
+  // check individual words
   for (const word of words) {
+    allTerms.add(word);
     const matches = cache.get(word) || [];
     matches.forEach((m) => allTerms.add(m));
   }
 
-  // MongoDB $text: space-separated terms = OR search
-  return [...allTerms].join(" ");
+  // check full query as one key
+  const fullMatches = cache.get(query.toLowerCase()) || [];
+  fullMatches.forEach((m) => allTerms.add(m));
+
+  const expanded = [...allTerms].join(" "); // plain, no quotes
+
+  return expanded;
 }
 
 // Build MongoDB $text search query
