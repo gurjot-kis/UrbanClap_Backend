@@ -20,6 +20,7 @@ const vendorSlotSchema = new Schema(
     date: {
       type: Date,
       required: true,
+      index: true,
     },
 
     startTime: { type: String, required: true },
@@ -30,17 +31,26 @@ const vendorSlotSchema = new Schema(
       coordinates: { type: [Number], required: true },
     },
 
-    status: {
-      type: String,
-      enum: ["available", "blocked", "booked"],
-      default: "available",
-      index: true,
+    // Maximum number of bookings allowed for this slot.
+    capacity: {
+      type: Number,
+      default: 1,
+      min: 1,
     },
 
-    booking_id: {
-      type: Schema.Types.ObjectId,
-      ref: "SlotBooking",
-      default: null,
+    // Number of bookings currently using this slot.
+    bookedCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    // Vendor can manually block/unblock a slot.
+    status: {
+      type: String,
+      enum: ["available", "blocked"],
+      default: "available",
+      index: true,
     },
   },
   { timestamps: true, versionKey: false },
@@ -51,7 +61,7 @@ vendorSlotSchema.index(
   { unique: true },
 );
 vendorSlotSchema.index({ location: "2dsphere" });
-vendorSlotSchema.index({ category_id: 1, date: 1, status: 1 });
+vendorSlotSchema.index({ vendor_id: 1, category_id: 1, date: 1, status: 1 });
 
 const VendorSlot = mongoose.model("VendorSlot", vendorSlotSchema);
 export default VendorSlot;

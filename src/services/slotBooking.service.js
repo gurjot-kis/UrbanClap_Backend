@@ -3,6 +3,7 @@ import SlotBooking from "../models/slot-booking.model.js";
 import VendorSlot from "../models/vendor-slot.model.js";
 import Product from "../models/product.model.js";
 import Address from "../models/address.model.js";
+import NativeProduct from "../models/nativeProduct.model.js";
 import Category from "../models/category.model.js";
 
 const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
@@ -17,48 +18,91 @@ const DAY_NAMES = [
   "Saturday",
 ];
 
-// === helpers ===
+const SHORT_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-const resolveLineItem = (product, variantKey, quantity) => {
-  if (quantity > product.maxQuantity) {
+const formatTimeToAMPM = (time) => {
+  const [h, m] = time.split(":").map(Number);
+  const period = h >= 12 ? "PM" : "AM";
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  return `${hour12}:${m.toString().padStart(2, "0")} ${period}`;
+};
+
+const resolveLineItem = (product, productType, variantKey, quantity) => {
+  // ── quantity check ───────────────────────────────────────────────────────
+  const maxQty =
+    productType === "native"
+      ? 99 // NativeProduct has no maxQuantity field
+      : (product.maxQuantity ?? 99);
+
+  if (quantity > maxQty) {
     throw {
       statusCode: 400,
-      message: `Quantity cannot exceed ${product.maxQuantity} for "${product.name}"`,
-    };
-  }
-  if (product.variants?.length > 0 && !variantKey) {
-    throw {
-      statusCode: 400,
-      message: `Please select a ${product.variantLabel || "variant"} for "${product.name}"`,
+      message: `Quantity cannot exceed ${maxQty} for "${productType === "native" ? product.product_name : product.name}"`,
     };
   }
 
-  let variant = null;
-  let unitPrice = product.basePrice;
+  // ── Service Product (has variants + durationMinutes) ─────────────────────
+  if (productType === "service") {
+    let variant = null;
+    let unitPrice = product.basePrice;
 
-  if (variantKey) {
-    variant = product.variants.find((v) => v.key === variantKey);
-    if (!variant) {
-      throw {
-        statusCode: 400,
-        message: `Invalid variant key for "${product.name}"`,
-      };
+    if (variantKey) {
+      variant = product.variants?.find((v) => v.key === variantKey);
+      if (!variant) {
+        throw {
+          statusCode: 400,
+          message: `Invalid variant key "${variantKey}" for "${product.name}"`,
+        };
+      }
+      unitPrice = variant.price;
     }
-    unitPrice = variant.price;
+
+    return {
+      product_id: product._id,
+      productType: "service",
+      variant: variant
+        ? { key: variant.key, label: variant.label, price: variant.price }
+        : { key: null, label: null, price: null },
+      basePrice: unitPrice,
+      quantity,
+      lineTotal: unitPrice * quantity,
+      duration: (product.durationMinutes || 0) * quantity,
+      category_id: product.category_id,
+      sub_category_id: product.sub_category_id,
+    };
   }
 
-  return {
-    product_id: product._id,
-    variant: variant
-      ? { key: variant.key, label: variant.label, price: variant.price }
-      : { key: null, label: null, price: null },
-    basePrice: unitPrice,
-    quantity,
-    lineTotal: unitPrice * quantity,
-    duration: product.durationMinutes * quantity,
-    category_id: product.category_id,
-    sub_category_id: product.sub_category_id,
-  };
+  // ── Native Product (has options not variants, no durationMinutes) ─────────
+  if (productType === "native") {
+    let option = null;
+    let unitPrice = product.base_price;
+
+    if (variantKey) {
+      // NativeProduct uses "options" with "_id" as key
+      option = product.options?.find((o) => String(o._id) === variantKey);
+      if (!option) {
+        throw {
+          statusCode: 400,
+          message: `Invalid option for "${product.product_name}"`,
+        };
+      }
+      unitPrice = option.price;
+    }
+
+    return {
+      product_id: product._id,
+      productType: "native",
+      variant: option
+        ? { key: String(option._id), label: option.label, price: option.price }
+        : { key: null, label: null, price: null },
+      basePrice: unitPrice,
+      quantity,
+      lineTotal: unitPrice * quantity,
+      duration: 0, // native products have no duration
+      category_id: product.category_id,
+      sub_category_id: product.sub_category_id,
+    };
+  }
 };
 
 const resolveServiceAddress = async (
@@ -68,9 +112,8 @@ const resolveServiceAddress = async (
   rawLocation,
 ) => {
   if (address_id) {
-    if (!isValidObjectId(address_id)) {
+    if (!isValidObjectId(address_id))
       throw { statusCode: 400, message: "Invalid address_id" };
-    }
 
     const addressDoc = await Address.findOne({
       _id: address_id,
@@ -105,15 +148,13 @@ const resolveServiceAddress = async (
     };
   }
 
-  // one-off address, no saved Address doc
   if (
-    !rawServiceAddress ||
-    !rawServiceAddress.contactName ||
-    !rawServiceAddress.contactPhone ||
-    !rawServiceAddress.addressLine1 ||
-    !rawServiceAddress.city ||
-    !rawServiceAddress.state ||
-    !rawServiceAddress.pincode
+    !rawServiceAddress?.contactName ||
+    !rawServiceAddress?.contactPhone ||
+    !rawServiceAddress?.addressLine1 ||
+    !rawServiceAddress?.city ||
+    !rawServiceAddress?.state ||
+    !rawServiceAddress?.pincode
   ) {
     throw {
       statusCode: 400,
@@ -135,39 +176,60 @@ const resolveServiceAddress = async (
 };
 
 const claimVendorSlot = async (vendorSlotId) => {
+  // atomic findOneAndUpdate without pipeline syntax
   const slot = await VendorSlot.findOneAndUpdate(
-    { _id: vendorSlotId, status: "available" },
-    { $set: { status: "booked" } },
+    {
+      _id: vendorSlotId,
+      status: "available",
+      $expr: { $lt: ["$bookedCount", "$capacity"] },
+    },
+    { $inc: { bookedCount: 1 } }, // ✅ plain update, no pipeline array
     { new: true },
   );
+
   if (!slot) {
     throw {
       statusCode: 409,
       message: "This slot is no longer available. Please pick another.",
     };
   }
+
+  // ✅ now check if fully booked and block it
+  if (slot.bookedCount >= slot.capacity) {
+    await VendorSlot.findByIdAndUpdate(slot._id, {
+      $set: { status: "blocked" },
+    });
+    slot.status = "blocked"; // reflect in returned object
+  }
+
   return slot;
 };
 
 const releaseVendorSlot = async (vendorSlotId) => {
   if (!vendorSlotId) return;
+  const slot = await VendorSlot.findById(vendorSlotId);
+  if (!slot) return;
+
+  const newCount = Math.max((slot.bookedCount || 1) - 1, 0);
   await VendorSlot.findByIdAndUpdate(vendorSlotId, {
-    $set: { status: "available", booking_id: null },
+    $set: {
+      bookedCount: newCount,
+      // ✅ restore to available when a booking is cancelled/released
+      status: newCount < slot.capacity ? "available" : "blocked",
+    },
   });
 };
 
 const getCategoryAncestryChain = async (categoryId) => {
   const chain = [];
   let currentId = categoryId;
-
   while (currentId) {
     chain.push(String(currentId));
-    const cat = await Category.findById(currentId).select("parent_id");
+    const cat = await Category.findById(currentId).select("parent_id").lean();
     if (!cat) break;
     currentId = cat.parent_id;
   }
-
-  return chain; // [self, parent, grandparent, ...]
+  return chain;
 };
 
 const isSlotCategoryValidForTarget = async (
@@ -176,12 +238,9 @@ const isSlotCategoryValidForTarget = async (
   targetSubCategoryId,
 ) => {
   const target = targetSubCategoryId || targetCategoryId;
-
   if (String(slotCategoryId) === String(target)) return true;
-
   const targetChain = await getCategoryAncestryChain(target);
   if (targetChain.includes(String(slotCategoryId))) return true;
-
   const slotChain = await getCategoryAncestryChain(slotCategoryId);
   return slotChain.includes(String(target));
 };
@@ -199,42 +258,55 @@ export const SlotBookingService = {
 
     if (!isValidObjectId(userId))
       throw { statusCode: 401, message: "Unauthorized" };
-    if (!Array.isArray(cartItems) || cartItems.length === 0) {
+    if (!Array.isArray(cartItems) || cartItems.length === 0)
       throw { statusCode: 400, message: "cartItems must be a non-empty array" };
-    }
-    if (!["instant", "schedule"].includes(slotType)) {
+    if (!["instant", "schedule"].includes(slotType))
       throw {
         statusCode: 400,
         message: "slotType must be 'instant' or 'schedule'",
       };
-    }
+
     for (const item of cartItems) {
-      if (!isValidObjectId(item.product_id)) {
+      if (!isValidObjectId(item.product_id))
         throw { statusCode: 400, message: "Invalid product_id in cartItems" };
-      }
     }
 
     const productIds = cartItems.map((i) => i.product_id);
-    const products = await Product.find({
-      _id: { $in: productIds },
-      status: "active",
-    });
-    if (products.length !== new Set(productIds.map(String)).size) {
+
+    // ✅ search both Product and NativeProduct in parallel
+    const [serviceProducts, nativeProducts] = await Promise.all([
+      Product.find({ _id: { $in: productIds }, status: "active" }).lean(),
+      NativeProduct.find({ _id: { $in: productIds }, status: "active" }).lean(),
+    ]);
+
+    // merge into one map with type tag
+    const productMap = new Map();
+    for (const p of serviceProducts)
+      productMap.set(String(p._id), { product: p, type: "service" });
+    for (const p of nativeProducts)
+      productMap.set(String(p._id), { product: p, type: "native" });
+
+    const uniqueIds = [...new Set(productIds.map(String))];
+    if (productMap.size !== uniqueIds.length) {
       throw {
         statusCode: 404,
         message: "One or more products not found or inactive",
       };
     }
-    const productMap = new Map(products.map((p) => [String(p._id), p]));
 
     const resolvedItems = cartItems.map((item) => {
-      const product = productMap.get(String(item.product_id));
-      if (!product)
+      const entry = productMap.get(String(item.product_id));
+      if (!entry)
         throw {
           statusCode: 404,
           message: `Product ${item.product_id} not found`,
         };
-      return resolveLineItem(product, item.variantKey, item.quantity || 1);
+      return resolveLineItem(
+        entry.product,
+        entry.type,
+        item.variantKey,
+        item.quantity || 1,
+      );
     });
 
     const categoryIds = new Set(
@@ -261,14 +333,24 @@ export const SlotBookingService = {
     );
 
     let bookingData = {
-      user: userId, // from auth middleware, never from payload
+      user: userId,
       items: resolvedItems.map(
-        ({ product_id, variant, basePrice, quantity, lineTotal }) => ({
+        ({
           product_id,
+          productType,
           variant,
           basePrice,
           quantity,
           lineTotal,
+          duration,
+        }) => ({
+          product_id,
+          productType,
+          variant,
+          basePrice,
+          quantity,
+          lineTotal,
+          duration, // ✅ store per-item duration
         }),
       ),
       category_id,
@@ -283,12 +365,11 @@ export const SlotBookingService = {
     };
 
     if (slotType === "schedule") {
-      if (!slotId || !isValidObjectId(slotId)) {
+      if (!slotId || !isValidObjectId(slotId))
         throw {
           statusCode: 400,
           message: "slotId is required for a schedule booking",
         };
-      }
 
       const claimedSlot = await claimVendorSlot(slotId);
 
@@ -322,19 +403,17 @@ export const SlotBookingService = {
         });
         return booking;
       } catch (err) {
-        await releaseVendorSlot(claimedSlot._id); // rollback the claim if booking creation failed
+        await releaseVendorSlot(claimedSlot._id);
         throw err;
       }
     }
 
-    // instant booking — no specific slot to claim yet, vendor gets matched separately
     bookingData.instantDetails = {
       requestedAt: new Date(),
       expectedArrivalTime: null,
       assignedAt: null,
     };
     bookingData.status = "pending";
-
     return SlotBooking.create(bookingData);
   },
 
@@ -547,23 +626,20 @@ export const SlotBookingService = {
   },
 
   getMobileSlots: async (userId, category_id) => {
-    // 1. Validate inputs
-    if (!isValidObjectId(userId)) {
+    if (!isValidObjectId(userId))
       throw { statusCode: 401, message: "Unauthorized" };
-    }
-    if (!category_id || !isValidObjectId(category_id)) {
+    if (!category_id || !isValidObjectId(category_id))
       throw { statusCode: 400, message: "Valid category_id is required" };
-    }
 
-    // 2. Fetch user's coordinates from their active default address
-    const userAddress = await Address.findOne({
-      user: userId,
-      isActive: true,
-    }).sort({ isDefault: -1 }); // prefer default address first
+    const [userAddress, allCategories] = await Promise.all([
+      Address.findOne({ user: userId, isActive: true })
+        .sort({ isDefault: -1 })
+        .lean(),
+      Category.find({ status: "active" }).select("_id parent_id").lean(),
+    ]);
 
-    if (!userAddress) {
+    if (!userAddress)
       throw { statusCode: 404, message: "No active address found for user" };
-    }
 
     const coords = userAddress.location?.coordinates;
     if (!coords || (coords[0] === 0 && coords[1] === 0)) {
@@ -575,28 +651,98 @@ export const SlotBookingService = {
     }
 
     const [lng, lat] = coords;
+    const catIdStr = String(category_id);
 
-    // 3. Build category chain to match parent/child categories
-    const categoryChain = await getCategoryAncestryChain(category_id);
+    const parentMap = new Map(
+      allCategories.map((c) => [
+        String(c._id),
+        c.parent_id ? String(c.parent_id) : null,
+      ]),
+    );
+    const ancestorChain = [];
+    let cur = catIdStr;
+    while (cur) {
+      ancestorChain.push(cur);
+      cur = parentMap.get(cur) || null;
+    }
 
-    // 4. Fetch nearest available slots — max 20
+    const childrenMap = new Map();
+    for (const c of allCategories) {
+      const pid = c.parent_id ? String(c.parent_id) : null;
+      if (!pid) continue;
+      if (!childrenMap.has(pid)) childrenMap.set(pid, []);
+      childrenMap.get(pid).push(String(c._id));
+    }
+
+    const descendants = [];
+    const stack = [catIdStr];
+    while (stack.length) {
+      const node = stack.pop();
+      const children = childrenMap.get(node) || [];
+      for (const child of children) {
+        descendants.push(child);
+        stack.push(child);
+      }
+    }
+
+    const categorySet = [...new Set([...ancestorChain, ...descendants])];
+
+    const now = new Date();
+    const startOfToday = new Date();
+    startOfToday.setUTCHours(0, 0, 0, 0);
+    const startOfTomorrow = new Date(startOfToday);
+    startOfTomorrow.setUTCDate(startOfTomorrow.getUTCDate() + 1);
+
+    const IST_OFFSET_MINUTES = 5 * 60 + 30;
+    const nowIST = new Date(now.getTime() + IST_OFFSET_MINUTES * 60 * 1000);
+    const currentTimeStr = `${String(nowIST.getUTCHours()).padStart(2, "0")}:${String(nowIST.getUTCMinutes()).padStart(2, "0")}`;
+
     const slots = await VendorSlot.find({
       status: "available",
-      category_id: { $in: categoryChain },
-      date: { $gte: new Date() }, // only future slots
+      category_id: { $in: categorySet },
+      $or: [
+        { date: { $gte: startOfTomorrow } },
+        {
+          date: { $gte: startOfToday, $lt: startOfTomorrow },
+          startTime: { $gte: currentTimeStr },
+        },
+      ],
       location: {
         $near: {
           $geometry: { type: "Point", coordinates: [lng, lat] },
-          $maxDistance: 10 * 1000, // 10 km default radius
+          $maxDistance: 10 * 1000,
         },
       },
     })
-      .populate("vendor_id", "name phone profileImage")
+      .sort({ date: 1, startTime: 1 })
+      .populate("vendor_id", "name profileImage")
       .populate("category_id", "name")
       .limit(20)
-      .select("date day startTime endTime vendor_id category_id location");
+      .select("date startTime endTime category_id vendor_id")
+      .lean();
 
-    return slots;
+    const todayUTCDay = startOfToday.getUTCDay();
+    const getDayLabel = (date) => {
+      const slotDay = new Date(date).getUTCDay();
+      if (slotDay === todayUTCDay) return "Today";
+      return SHORT_DAYS[slotDay];
+    };
+
+    return slots.map((slot) => ({
+      _id: slot._id,
+      category: slot.category_id,
+      date: slot.date,
+      day: getDayLabel(slot.date),
+      startTime: formatTimeToAMPM(slot.startTime),
+      endTime: formatTimeToAMPM(slot.endTime),
+      vendor: {
+        _id: slot.vendor_id?._id || null,
+        name: slot.vendor_id?.name || null,
+        image: slot.vendor_id?.profileImage || null,
+        rating: null,
+        totalJobs: null,
+      },
+    }));
   },
 };
 

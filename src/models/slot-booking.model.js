@@ -14,7 +14,13 @@ const slotBookingSchema = new Schema(
       {
         product_id: {
           type: Schema.Types.ObjectId,
-          ref: "Product",
+          refPath: "items.productType", // ✅ dynamic ref — works for both models
+          required: true,
+        },
+        // ✅ tells populate which model to use
+        productType: {
+          type: String,
+          enum: ["service", "native"],
           required: true,
         },
         variant: {
@@ -25,6 +31,7 @@ const slotBookingSchema = new Schema(
         basePrice: { type: Number, required: true },
         quantity: { type: Number, default: 1, min: 1 },
         lineTotal: { type: Number, required: true },
+        duration: { type: Number, default: 0 }, // ✅ per-item duration
         _id: false,
       },
     ],

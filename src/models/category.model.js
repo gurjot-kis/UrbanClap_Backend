@@ -43,6 +43,17 @@ const categorySchema = new mongoose.Schema(
       default: "active",
     },
 
+    durationMinutes: {
+      type: Number,
+      default: null,
+      min: 1,
+    },
+
+    isBookable: {
+      type: Boolean,
+      default: false,
+    },
+
     slotConfig: {
       allowInstant: { type: Boolean, default: true },
       allowSchedule: { type: Boolean, default: true },

@@ -5,7 +5,6 @@ export const SlotbookingController = {
   fetchAvailableSlots: async (req, res) => {
     try {
       const userId = req.user._id;
-      console.log("UserId <><><", userId);
       const { category_id } = req.query;
 
       const result = await SlotBookingService.getMobileSlots(
@@ -23,6 +22,24 @@ export const SlotbookingController = {
         code: err.statusCode || 500,
         message: err.message || "Something went wrong",
         error: err.message,
+      });
+    }
+  },
+
+  addSlotBooking: async (req, res) => {
+    try {
+      const booking = await SlotBookingService.createSlotBooking(
+        req.user._id,
+        req.body,
+      );
+      return sendSuccess(res, {
+        message: "Booking created successfully",
+        data: booking,
+      });
+    } catch (err) {
+      return sendError(res, {
+        code: err.statusCode || 500,
+        message: err.message || "Something went wrong",
       });
     }
   },
