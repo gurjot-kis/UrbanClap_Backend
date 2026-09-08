@@ -5,6 +5,7 @@ import Product from "../models/product.model.js";
 import Address from "../models/address.model.js";
 import NativeProduct from "../models/nativeProduct.model.js";
 import Category from "../models/category.model.js";
+import VendorService from "../models/vendor-service.model.js";
 
 const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
 
@@ -417,84 +418,6 @@ export const SlotBookingService = {
     return SlotBooking.create(bookingData);
   },
 
-  getAllSlotBookings: async (query) => {
-    const {
-      user,
-      vendor_id,
-      category_id,
-      status,
-      slotType,
-      from_date,
-      to_date,
-      lat,
-      lng,
-      radiusKm,
-      page = 1,
-      limit = 20,
-    } = query;
-
-    const filter = {};
-
-    if (user) {
-      if (!isValidObjectId(user))
-        throw { statusCode: 400, message: "Invalid user id" };
-      filter.user = user;
-    }
-    if (vendor_id) {
-      if (!isValidObjectId(vendor_id))
-        throw { statusCode: 400, message: "Invalid vendor_id" };
-      filter.vendor_id = vendor_id;
-    }
-    if (category_id) {
-      if (!isValidObjectId(category_id))
-        throw { statusCode: 400, message: "Invalid category_id" };
-      filter.category_id = category_id;
-    }
-    if (status) filter.status = status;
-    if (slotType) filter.slotType = slotType;
-
-    if (from_date || to_date) {
-      filter["scheduleDetails.date"] = {};
-      if (from_date) filter["scheduleDetails.date"].$gte = new Date(from_date);
-      if (to_date) filter["scheduleDetails.date"].$lte = new Date(to_date);
-    }
-
-    if (lat && lng) {
-      filter.location = {
-        $near: {
-          $geometry: { type: "Point", coordinates: [Number(lng), Number(lat)] },
-          $maxDistance: (Number(radiusKm) || 10) * 1000,
-        },
-      };
-    }
-
-    const pageNum = Math.max(Number(page) || 1, 1);
-    const limitNum = Math.max(Number(limit) || 20, 1);
-    const skip = (pageNum - 1) * limitNum;
-
-    const [bookings, total] = await Promise.all([
-      SlotBooking.find(filter)
-        .populate("user", "name email phone")
-        .populate("vendor_id", "name email phone")
-        .populate("items.product_id", "name mainImage")
-        .populate("category_id", "name")
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limitNum),
-      SlotBooking.countDocuments(filter),
-    ]);
-
-    return {
-      bookings,
-      pagination: {
-        total,
-        page: pageNum,
-        limit: limitNum,
-        totalPages: Math.ceil(total / limitNum),
-      },
-    };
-  },
-
   updateSlotBooking: async (id, payload) => {
     if (!isValidObjectId(id))
       throw { statusCode: 400, message: "Invalid booking id" };
@@ -625,6 +548,153 @@ export const SlotBookingService = {
     return booking;
   },
 
+  checkCoverage: async (userId, category_id, service_ids) => {
+    if (!isValidObjectId(userId))
+      throw { statusCode: 401, message: "Unauthorized" };
+    if (!category_id || !isValidObjectId(category_id))
+      throw { statusCode: 400, message: "Valid category_id is required" };
+    if (!Array.isArray(service_ids) || service_ids.length === 0)
+      throw {
+        statusCode: 400,
+        message: "service_ids must be a non-empty array",
+      };
+
+    const invalidId = service_ids.find((id) => !isValidObjectId(id));
+    if (invalidId)
+      throw { statusCode: 400, message: `Invalid service_id: ${invalidId}` };
+
+    const [userAddress, allCategories, serviceCategories] = await Promise.all([
+      Address.findOne({ user: userId, isActive: true })
+        .sort({ isDefault: -1 })
+        .lean(),
+      Category.find({ status: "active" }).select("_id parent_id").lean(),
+      Category.find({ _id: { $in: service_ids }, status: "active" })
+        .select("_id name")
+        .lean(),
+    ]);
+
+    if (!userAddress)
+      throw { statusCode: 404, message: "No active address found for user" };
+
+    const coords = userAddress.location?.coordinates;
+    if (!coords || (coords[0] === 0 && coords[1] === 0))
+      throw {
+        statusCode: 400,
+        message:
+          "User address has no valid location. Please update your address.",
+      };
+
+    // validate all service_ids exist
+    if (serviceCategories.length !== service_ids.length) {
+      const foundIds = serviceCategories.map((s) => String(s._id));
+      const missing = service_ids.filter((id) => !foundIds.includes(id));
+      throw {
+        statusCode: 404,
+        message: `Services not found or inactive: ${missing.join(", ")}`,
+      };
+    }
+
+    const [lng, lat] = coords;
+
+    const parentMap = new Map(
+      allCategories.map((c) => [
+        String(c._id),
+        c.parent_id ? String(c.parent_id) : null,
+      ]),
+    );
+
+    // ── build ancestor chain per service_id ───────────────────────────────────
+    const serviceAncestorChains = service_ids.map((sid) => {
+      const chain = [];
+      let cur = String(sid);
+      while (cur) {
+        chain.push(cur);
+        cur = parentMap.get(cur) || null;
+      }
+      return { service_id: String(sid), chain };
+    });
+
+    const allAncestorIds = [
+      ...new Set(serviceAncestorChains.flatMap((s) => s.chain)),
+    ];
+
+    // ── find vendors near user who have any of these services active ──────────
+    const nearbySlots = await VendorSlot.find({
+      status: "available",
+      location: {
+        $near: {
+          $geometry: { type: "Point", coordinates: [lng, lat] },
+          $maxDistance: 10 * 1000,
+        },
+      },
+    })
+      .select("vendor_id")
+      .lean();
+
+    if (nearbySlots.length === 0) {
+      // no vendors at all nearby — everything is uncovered
+      const uncoveredServices = serviceCategories.map((s) => ({
+        service_id: String(s._id),
+        name: s.name,
+      }));
+      return {
+        allCovered: false,
+        coveredServices: [],
+        uncoveredServices,
+      };
+    }
+
+    const nearbyVendorIds = [
+      ...new Set(nearbySlots.map((s) => String(s.vendor_id))),
+    ];
+
+    // one query — get all active vendor services for nearby vendors
+    const vendorServiceDocs = await VendorService.find({
+      vendor_id: { $in: nearbyVendorIds },
+      service_id: { $in: allAncestorIds },
+      status: "active",
+    })
+      .select("vendor_id service_id")
+      .lean();
+
+    // group by vendor_id → Set of their service_ids
+    const vendorServiceMap = new Map();
+    for (const vs of vendorServiceDocs) {
+      const vid = String(vs.vendor_id);
+      if (!vendorServiceMap.has(vid)) vendorServiceMap.set(vid, new Set());
+      vendorServiceMap.get(vid).add(String(vs.service_id));
+    }
+
+    // ── per service: check if ANY nearby vendor covers it ────────────────────
+    const serviceCoverageMap = new Map(); // service_id → boolean
+    for (const { service_id, chain } of serviceAncestorChains) {
+      const isCovered = nearbyVendorIds.some((vid) => {
+        const vendorServices = vendorServiceMap.get(vid) || new Set();
+        return chain.some((ancestorId) => vendorServices.has(ancestorId));
+      });
+      serviceCoverageMap.set(service_id, isCovered);
+    }
+
+    const coveredServices = [];
+    const uncoveredServices = [];
+
+    for (const cat of serviceCategories) {
+      const sid = String(cat._id);
+      const entry = { service_id: sid, name: cat.name };
+      if (serviceCoverageMap.get(sid)) {
+        coveredServices.push(entry);
+      } else {
+        uncoveredServices.push(entry);
+      }
+    }
+
+    return {
+      allCovered: uncoveredServices.length === 0,
+      coveredServices,
+      uncoveredServices,
+    };
+  },
+
   getMobileSlots: async (userId, category_id) => {
     if (!isValidObjectId(userId))
       throw { statusCode: 401, message: "Unauthorized" };
@@ -642,13 +712,12 @@ export const SlotBookingService = {
       throw { statusCode: 404, message: "No active address found for user" };
 
     const coords = userAddress.location?.coordinates;
-    if (!coords || (coords[0] === 0 && coords[1] === 0)) {
+    if (!coords || (coords[0] === 0 && coords[1] === 0))
       throw {
         statusCode: 400,
         message:
           "User address has no valid location. Please update your address.",
       };
-    }
 
     const [lng, lat] = coords;
     const catIdStr = String(category_id);
@@ -659,13 +728,16 @@ export const SlotBookingService = {
         c.parent_id ? String(c.parent_id) : null,
       ]),
     );
-    const ancestorChain = [];
+
+    // ancestry of category_id (leaf → root)
+    const ancestorChainOfCategory = [];
     let cur = catIdStr;
     while (cur) {
-      ancestorChain.push(cur);
+      ancestorChainOfCategory.push(cur);
       cur = parentMap.get(cur) || null;
     }
 
+    // descendants of category_id
     const childrenMap = new Map();
     for (const c of allCategories) {
       const pid = c.parent_id ? String(c.parent_id) : null;
@@ -685,7 +757,9 @@ export const SlotBookingService = {
       }
     }
 
-    const categorySet = [...new Set([...ancestorChain, ...descendants])];
+    const categorySet = [
+      ...new Set([...ancestorChainOfCategory, ...descendants]),
+    ];
 
     const now = new Date();
     const startOfToday = new Date();
@@ -721,6 +795,8 @@ export const SlotBookingService = {
       .select("date startTime endTime category_id vendor_id")
       .lean();
 
+    if (slots.length === 0) return [];
+
     const todayUTCDay = startOfToday.getUTCDay();
     const getDayLabel = (date) => {
       const slotDay = new Date(date).getUTCDay();
@@ -738,9 +814,6 @@ export const SlotBookingService = {
       vendor: {
         _id: slot.vendor_id?._id || null,
         name: slot.vendor_id?.name || null,
-        image: slot.vendor_id?.profileImage || null,
-        rating: null,
-        totalJobs: null,
       },
     }));
   },

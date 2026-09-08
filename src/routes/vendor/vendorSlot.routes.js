@@ -14,6 +14,7 @@ router
 
 router
   .route("/:id")
+  .get(VendorSlotController.getVendorSlotById)
   .put(VendorSlotController.updateVendorSlot)
   .patch(VendorSlotController.updateVendorSlotAvailability)
   .delete(VendorSlotController.deleteVendorSlot);

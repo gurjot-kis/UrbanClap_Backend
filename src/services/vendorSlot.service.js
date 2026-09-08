@@ -133,7 +133,7 @@ export const VendorSlotService = {
         throw {
           statusCode: 409,
           message:
-            "A slot already exists for this vendor at this date and time",
+            "A slot already exists for this vendor, category, date and time",
         };
       }
       throw err;
@@ -352,6 +352,44 @@ export const VendorSlotService = {
     };
   },
 
+  getVendorSlotById: async (id, vendor_id) => {
+    if (!isValidObjectId(id)) {
+      throw { statusCode: 400, message: "Invalid slot id" };
+    }
+
+    const query = { _id: id };
+    if (vendor_id) query.vendor_id = vendor_id;
+
+    const slot = await VendorSlot.findOne(query)
+      .populate("category_id", "name slotConfig")
+      .lean();
+
+    if (!slot) {
+      throw { statusCode: 404, message: "Vendor slot not found" };
+    }
+
+    const { allowInstant, allowSchedule } = slot.category_id?.slotConfig || {};
+    const slotType =
+      allowInstant && allowSchedule ? ["instant", "schedule"] : ["schedule"];
+
+    return {
+      _id: slot._id,
+      vendor_id: slot.vendor_id,
+      category_id: slot.category_id?._id,
+      categoryName: slot.category_id?.name || null,
+      slotType,
+      date: slot.date,
+      startTime: formatTimeToAMPM(slot.startTime),
+      endTime: formatTimeToAMPM(slot.endTime),
+      location: slot.location,
+      status: slot.status,
+      bookedCount: slot.bookedCount,
+      capacity: slot.capacity,
+      createdAt: slot.createdAt,
+      updatedAt: slot.updatedAt,
+    };
+  },
+
   updateVendorSlot: async (id, payload) => {
     if (!isValidObjectId(id))
       throw { statusCode: 400, message: "Invalid slot id" };
@@ -400,7 +438,7 @@ export const VendorSlotService = {
         throw {
           statusCode: 409,
           message:
-            "Another slot already exists for this vendor at this date and time",
+            "Another slot already exists for this vendor, category, date and time",
         };
       }
       throw err;

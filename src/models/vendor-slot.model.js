@@ -31,14 +31,12 @@ const vendorSlotSchema = new Schema(
       coordinates: { type: [Number], required: true },
     },
 
-    // Maximum number of bookings allowed for this slot.
     capacity: {
       type: Number,
       default: 1,
       min: 1,
     },
 
-    // Number of bookings currently using this slot.
     bookedCount: {
       type: Number,
       default: 0,
@@ -57,7 +55,7 @@ const vendorSlotSchema = new Schema(
 );
 
 vendorSlotSchema.index(
-  { vendor_id: 1, date: 1, startTime: 1 },
+  { vendor_id: 1, date: 1, startTime: 1, category_id: 1 },
   { unique: true },
 );
 vendorSlotSchema.index({ location: "2dsphere" });
