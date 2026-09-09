@@ -247,307 +247,6 @@ const isSlotCategoryValidForTarget = async (
 };
 
 export const SlotBookingService = {
-  createSlotBooking: async (userId, payload) => {
-    const {
-      cartItems,
-      slotType,
-      address_id,
-      serviceAddress: rawServiceAddress,
-      location: rawLocation,
-      slotId,
-    } = payload;
-
-    if (!isValidObjectId(userId))
-      throw { statusCode: 401, message: "Unauthorized" };
-    if (!Array.isArray(cartItems) || cartItems.length === 0)
-      throw { statusCode: 400, message: "cartItems must be a non-empty array" };
-    if (!["instant", "schedule"].includes(slotType))
-      throw {
-        statusCode: 400,
-        message: "slotType must be 'instant' or 'schedule'",
-      };
-
-    for (const item of cartItems) {
-      if (!isValidObjectId(item.product_id))
-        throw { statusCode: 400, message: "Invalid product_id in cartItems" };
-    }
-
-    const productIds = cartItems.map((i) => i.product_id);
-
-    // ✅ search both Product and NativeProduct in parallel
-    const [serviceProducts, nativeProducts] = await Promise.all([
-      Product.find({ _id: { $in: productIds }, status: "active" }).lean(),
-      NativeProduct.find({ _id: { $in: productIds }, status: "active" }).lean(),
-    ]);
-
-    // merge into one map with type tag
-    const productMap = new Map();
-    for (const p of serviceProducts)
-      productMap.set(String(p._id), { product: p, type: "service" });
-    for (const p of nativeProducts)
-      productMap.set(String(p._id), { product: p, type: "native" });
-
-    const uniqueIds = [...new Set(productIds.map(String))];
-    if (productMap.size !== uniqueIds.length) {
-      throw {
-        statusCode: 404,
-        message: "One or more products not found or inactive",
-      };
-    }
-
-    const resolvedItems = cartItems.map((item) => {
-      const entry = productMap.get(String(item.product_id));
-      if (!entry)
-        throw {
-          statusCode: 404,
-          message: `Product ${item.product_id} not found`,
-        };
-      return resolveLineItem(
-        entry.product,
-        entry.type,
-        item.variantKey,
-        item.quantity || 1,
-      );
-    });
-
-    const categoryIds = new Set(
-      resolvedItems.map((i) => String(i.category_id)),
-    );
-    if (categoryIds.size > 1) {
-      throw {
-        statusCode: 400,
-        message:
-          "All items in a single booking must belong to the same category",
-      };
-    }
-
-    const category_id = resolvedItems[0].category_id;
-    const sub_category_id = resolvedItems[0].sub_category_id;
-    const totalAmount = resolvedItems.reduce((sum, i) => sum + i.lineTotal, 0);
-    const totalDuration = resolvedItems.reduce((sum, i) => sum + i.duration, 0);
-
-    const { serviceAddress, location } = await resolveServiceAddress(
-      userId,
-      address_id,
-      rawServiceAddress,
-      rawLocation,
-    );
-
-    let bookingData = {
-      user: userId,
-      items: resolvedItems.map(
-        ({
-          product_id,
-          productType,
-          variant,
-          basePrice,
-          quantity,
-          lineTotal,
-          duration,
-        }) => ({
-          product_id,
-          productType,
-          variant,
-          basePrice,
-          quantity,
-          lineTotal,
-          duration, // ✅ store per-item duration
-        }),
-      ),
-      category_id,
-      sub_category_id,
-      slotType,
-      duration: totalDuration,
-      address_id: address_id || null,
-      serviceAddress,
-      location: { type: "Point", coordinates: location.coordinates },
-      totalAmount,
-      vendor_id: null,
-    };
-
-    if (slotType === "schedule") {
-      if (!slotId || !isValidObjectId(slotId))
-        throw {
-          statusCode: 400,
-          message: "slotId is required for a schedule booking",
-        };
-
-      const claimedSlot = await claimVendorSlot(slotId);
-
-      const validCategory = await isSlotCategoryValidForTarget(
-        claimedSlot.category_id,
-        category_id,
-        sub_category_id,
-      );
-      if (!validCategory) {
-        await releaseVendorSlot(claimedSlot._id);
-        throw {
-          statusCode: 400,
-          message: "Selected slot does not offer this category",
-        };
-      }
-
-      bookingData.vendor_id = claimedSlot.vendor_id;
-      bookingData.scheduleDetails = {
-        date: claimedSlot.date,
-        day: DAY_NAMES[new Date(claimedSlot.date).getUTCDay()],
-        startTime: claimedSlot.startTime,
-        endTime: claimedSlot.endTime,
-        vendorSlotId: claimedSlot._id,
-      };
-      bookingData.status = "confirmed";
-
-      try {
-        const booking = await SlotBooking.create(bookingData);
-        await VendorSlot.findByIdAndUpdate(claimedSlot._id, {
-          $set: { booking_id: booking._id },
-        });
-        return booking;
-      } catch (err) {
-        await releaseVendorSlot(claimedSlot._id);
-        throw err;
-      }
-    }
-
-    bookingData.instantDetails = {
-      requestedAt: new Date(),
-      expectedArrivalTime: null,
-      assignedAt: null,
-    };
-    bookingData.status = "pending";
-    return SlotBooking.create(bookingData);
-  },
-
-  updateSlotBooking: async (id, payload) => {
-    if (!isValidObjectId(id))
-      throw { statusCode: 400, message: "Invalid booking id" };
-
-    const booking = await SlotBooking.findById(id);
-    if (!booking) throw { statusCode: 404, message: "Booking not found" };
-
-    if (["completed", "cancelled"].includes(booking.status) && !payload.force) {
-      throw {
-        statusCode: 400,
-        message: `Booking is already ${booking.status} and cannot be modified`,
-      };
-    }
-
-    // --- Cancellation ---
-    if (payload.status === "cancelled") {
-      if (
-        booking.slotType === "schedule" &&
-        booking.scheduleDetails?.vendorSlotId
-      ) {
-        await releaseVendorSlot(booking.scheduleDetails.vendorSlotId);
-      }
-      booking.status = "cancelled";
-      booking.cancellation = {
-        cancelledBy: payload.cancellation?.cancelledBy || "user",
-        reason: payload.cancellation?.reason || null,
-        cancelledAt: new Date(),
-        refundAmount: payload.cancellation?.refundAmount ?? null,
-      };
-      return booking.save();
-    }
-
-    // --- Reschedule (schedule bookings only) --- flat "slotId", not nested scheduleDetails
-    if (payload.slotId && booking.slotType === "schedule") {
-      const newSlotId = payload.slotId;
-      const currentSlotId = booking.scheduleDetails?.vendorSlotId;
-
-      if (!isValidObjectId(newSlotId))
-        throw { statusCode: 400, message: "Invalid slotId" };
-
-      if (String(newSlotId) !== String(currentSlotId)) {
-        const claimedSlot = await claimVendorSlot(newSlotId);
-
-        const validCategory = await isSlotCategoryValidForTarget(
-          claimedSlot.category_id,
-          booking.category_id,
-          booking.sub_category_id,
-        );
-        if (!validCategory) {
-          await releaseVendorSlot(claimedSlot._id);
-          throw {
-            statusCode: 400,
-            message: "New slot does not belong to this booking's category",
-          };
-        }
-
-        try {
-          await releaseVendorSlot(currentSlotId);
-          booking.vendor_id = claimedSlot.vendor_id;
-          booking.scheduleDetails = {
-            date: claimedSlot.date,
-            day: DAY_NAMES[new Date(claimedSlot.date).getUTCDay()],
-            startTime: claimedSlot.startTime,
-            endTime: claimedSlot.endTime,
-            vendorSlotId: claimedSlot._id,
-          };
-          booking.rescheduledFrom = booking.rescheduledFrom || booking._id;
-          await VendorSlot.findByIdAndUpdate(claimedSlot._id, {
-            $set: { booking_id: booking._id },
-          });
-        } catch (err) {
-          await releaseVendorSlot(claimedSlot._id);
-          throw err;
-        }
-      }
-    }
-
-    // --- General field updates ---
-    const allowedFields = [
-      "status",
-      "paymentStatus",
-      "payment_id",
-      "otp",
-      "vendor_id",
-      "instantDetails",
-    ];
-    allowedFields.forEach((field) => {
-      if (payload[field] !== undefined) booking[field] = payload[field];
-    });
-
-    await booking.save();
-    return booking;
-  },
-
-  deleteSlotBooking: async (id, force = false) => {
-    if (!isValidObjectId(id))
-      throw { statusCode: 400, message: "Invalid booking id" };
-
-    const booking = await SlotBooking.findById(id);
-    if (!booking) throw { statusCode: 404, message: "Booking not found" };
-
-    const protectedStatuses = [
-      "confirmed",
-      "vendor_on_way",
-      "in_progress",
-      "completed",
-    ];
-    if (
-      (protectedStatuses.includes(booking.status) ||
-        booking.paymentStatus === "paid") &&
-      !force
-    ) {
-      throw {
-        statusCode: 400,
-        message:
-          "This booking is active or paid. Cancel it first, or pass force=true",
-      };
-    }
-
-    if (
-      booking.slotType === "schedule" &&
-      booking.scheduleDetails?.vendorSlotId
-    ) {
-      await releaseVendorSlot(booking.scheduleDetails.vendorSlotId);
-    }
-
-    await SlotBooking.deleteOne({ _id: id });
-    return booking;
-  },
-
   checkCoverage: async (userId, category_id, service_ids) => {
     if (!isValidObjectId(userId))
       throw { statusCode: 401, message: "Unauthorized" };
@@ -816,6 +515,346 @@ export const SlotBookingService = {
         name: slot.vendor_id?.name || null,
       },
     }));
+  },
+
+  createSlotBooking: async (userId, payload) => {
+    const {
+      cartItems,
+      slotType,
+      address_id,
+      serviceAddress: rawServiceAddress,
+      location: rawLocation,
+      slotId,
+    } = payload;
+
+    if (!isValidObjectId(userId))
+      throw { statusCode: 401, message: "Unauthorized" };
+    if (!Array.isArray(cartItems) || cartItems.length === 0)
+      throw { statusCode: 400, message: "cartItems must be a non-empty array" };
+    if (!["instant", "schedule"].includes(slotType))
+      throw {
+        statusCode: 400,
+        message: "slotType must be 'instant' or 'schedule'",
+      };
+
+    for (const item of cartItems) {
+      if (!isValidObjectId(item.product_id))
+        throw { statusCode: 400, message: "Invalid product_id in cartItems" };
+    }
+
+    const productIds = cartItems.map((i) => i.product_id);
+
+    // ✅ search both Product and NativeProduct in parallel
+    const [serviceProducts, nativeProducts] = await Promise.all([
+      Product.find({ _id: { $in: productIds }, status: "active" }).lean(),
+      NativeProduct.find({ _id: { $in: productIds }, status: "active" }).lean(),
+    ]);
+
+    // merge into one map with type tag
+    const productMap = new Map();
+    for (const p of serviceProducts)
+      productMap.set(String(p._id), { product: p, type: "service" });
+    for (const p of nativeProducts)
+      productMap.set(String(p._id), { product: p, type: "native" });
+
+    const uniqueIds = [...new Set(productIds.map(String))];
+    if (productMap.size !== uniqueIds.length) {
+      throw {
+        statusCode: 404,
+        message: "One or more products not found or inactive",
+      };
+    }
+
+    const resolvedItems = cartItems.map((item) => {
+      const entry = productMap.get(String(item.product_id));
+      if (!entry)
+        throw {
+          statusCode: 404,
+          message: `Product ${item.product_id} not found`,
+        };
+      return resolveLineItem(
+        entry.product,
+        entry.type,
+        item.variantKey,
+        item.quantity || 1,
+      );
+    });
+
+    const categoryIds = new Set(
+      resolvedItems.map((i) => String(i.category_id)),
+    );
+    if (categoryIds.size > 1) {
+      throw {
+        statusCode: 400,
+        message:
+          "All items in a single booking must belong to the same category",
+      };
+    }
+
+    const category_id = resolvedItems[0].category_id;
+    const sub_category_id = resolvedItems[0].sub_category_id;
+    const totalAmount = resolvedItems.reduce((sum, i) => sum + i.lineTotal, 0);
+    const totalDuration = resolvedItems.reduce((sum, i) => sum + i.duration, 0);
+
+    const { serviceAddress, location } = await resolveServiceAddress(
+      userId,
+      address_id,
+      rawServiceAddress,
+      rawLocation,
+    );
+
+    let bookingData = {
+      user: userId,
+      items: resolvedItems.map(
+        ({
+          product_id,
+          productType,
+          variant,
+          basePrice,
+          quantity,
+          lineTotal,
+          duration,
+        }) => ({
+          product_id,
+          productType,
+          variant,
+          basePrice,
+          quantity,
+          lineTotal,
+          duration, // ✅ store per-item duration
+        }),
+      ),
+      category_id,
+      sub_category_id,
+      slotType,
+      duration: totalDuration,
+      address_id: address_id || null,
+      serviceAddress,
+      location: { type: "Point", coordinates: location.coordinates },
+      totalAmount,
+      vendor_id: null,
+    };
+
+    if (slotType === "schedule") {
+      if (!slotId || !isValidObjectId(slotId))
+        throw {
+          statusCode: 400,
+          message: "slotId is required for a schedule booking",
+        };
+
+      const claimedSlot = await claimVendorSlot(slotId);
+
+      const validCategory = await isSlotCategoryValidForTarget(
+        claimedSlot.category_id,
+        category_id,
+        sub_category_id,
+      );
+      if (!validCategory) {
+        await releaseVendorSlot(claimedSlot._id);
+        throw {
+          statusCode: 400,
+          message: "Selected slot does not offer this category",
+        };
+      }
+
+      bookingData.vendor_id = claimedSlot.vendor_id;
+      bookingData.scheduleDetails = {
+        date: claimedSlot.date,
+        day: DAY_NAMES[new Date(claimedSlot.date).getUTCDay()],
+        startTime: claimedSlot.startTime,
+        endTime: claimedSlot.endTime,
+        vendorSlotId: claimedSlot._id,
+      };
+      bookingData.status = "confirmed";
+
+      try {
+        const booking = await SlotBooking.create(bookingData);
+        await VendorSlot.findByIdAndUpdate(claimedSlot._id, {
+          $set: { booking_id: booking._id },
+        });
+        return booking;
+      } catch (err) {
+        await releaseVendorSlot(claimedSlot._id);
+        throw err;
+      }
+    }
+
+    bookingData.instantDetails = {
+      requestedAt: new Date(),
+      expectedArrivalTime: null,
+      assignedAt: null,
+    };
+    bookingData.status = "pending";
+    return SlotBooking.create(bookingData);
+  },
+
+  updateSlotBooking: async (id, payload) => {
+    if (!isValidObjectId(id))
+      throw { statusCode: 400, message: "Invalid booking id" };
+
+    const booking = await SlotBooking.findById(id);
+    if (!booking) throw { statusCode: 404, message: "Booking not found" };
+
+    if (["completed", "cancelled"].includes(booking.status) && !payload.force) {
+      throw {
+        statusCode: 400,
+        message: `Booking is already ${booking.status} and cannot be modified`,
+      };
+    }
+
+    // --- Cancellation ---
+    if (payload.status === "cancelled") {
+      if (
+        booking.slotType === "schedule" &&
+        booking.scheduleDetails?.vendorSlotId
+      ) {
+        await releaseVendorSlot(booking.scheduleDetails.vendorSlotId);
+      }
+      booking.status = "cancelled";
+      booking.cancellation = {
+        cancelledBy: payload.cancellation?.cancelledBy || "user",
+        reason: payload.cancellation?.reason || null,
+        cancelledAt: new Date(),
+        refundAmount: payload.cancellation?.refundAmount ?? null,
+      };
+      return booking.save();
+    }
+
+    // --- Reschedule (schedule bookings only) --- flat "slotId", not nested scheduleDetails
+    if (payload.slotId && booking.slotType === "schedule") {
+      const newSlotId = payload.slotId;
+      const currentSlotId = booking.scheduleDetails?.vendorSlotId;
+
+      if (!isValidObjectId(newSlotId))
+        throw { statusCode: 400, message: "Invalid slotId" };
+
+      if (String(newSlotId) !== String(currentSlotId)) {
+        const claimedSlot = await claimVendorSlot(newSlotId);
+
+        const validCategory = await isSlotCategoryValidForTarget(
+          claimedSlot.category_id,
+          booking.category_id,
+          booking.sub_category_id,
+        );
+        if (!validCategory) {
+          await releaseVendorSlot(claimedSlot._id);
+          throw {
+            statusCode: 400,
+            message: "New slot does not belong to this booking's category",
+          };
+        }
+
+        try {
+          await releaseVendorSlot(currentSlotId);
+          booking.vendor_id = claimedSlot.vendor_id;
+          booking.scheduleDetails = {
+            date: claimedSlot.date,
+            day: DAY_NAMES[new Date(claimedSlot.date).getUTCDay()],
+            startTime: claimedSlot.startTime,
+            endTime: claimedSlot.endTime,
+            vendorSlotId: claimedSlot._id,
+          };
+          booking.rescheduledFrom = booking.rescheduledFrom || booking._id;
+          await VendorSlot.findByIdAndUpdate(claimedSlot._id, {
+            $set: { booking_id: booking._id },
+          });
+        } catch (err) {
+          await releaseVendorSlot(claimedSlot._id);
+          throw err;
+        }
+      }
+    }
+
+    // --- General field updates ---
+    const allowedFields = [
+      "status",
+      "paymentStatus",
+      "payment_id",
+      "otp",
+      "vendor_id",
+      "instantDetails",
+    ];
+    allowedFields.forEach((field) => {
+      if (payload[field] !== undefined) booking[field] = payload[field];
+    });
+
+    await booking.save();
+    return booking;
+  },
+
+  cancelSlotBooking: async (userId, bookingId, reason) => {
+    if (!isValidObjectId(bookingId))
+      throw { statusCode: 400, message: "Invalid booking id" };
+
+    const booking = await SlotBooking.findOne({
+      _id: bookingId,
+      user: userId,
+    });
+
+    if (!booking) throw { statusCode: 404, message: "Booking not found" };
+
+    if (booking.status === "cancelled")
+      throw { statusCode: 400, message: "Booking is already cancelled" };
+
+    if (["completed", "in_progress"].includes(booking.status))
+      throw {
+        statusCode: 400,
+        message: `Cannot cancel a booking that is ${booking.status}`,
+      };
+
+    // release the vendor slot
+    if (
+      booking.slotType === "schedule" &&
+      booking.scheduleDetails?.vendorSlotId
+    ) {
+      await releaseVendorSlot(booking.scheduleDetails.vendorSlotId);
+    }
+
+    booking.status = "cancelled";
+    booking.cancellation = {
+      cancelledBy: "user",
+      reason: reason || null,
+      cancelledAt: new Date(),
+      refundAmount: null,
+    };
+
+    return booking.save();
+  },
+
+  deleteSlotBooking: async (id, force = false) => {
+    if (!isValidObjectId(id))
+      throw { statusCode: 400, message: "Invalid booking id" };
+
+    const booking = await SlotBooking.findById(id);
+    if (!booking) throw { statusCode: 404, message: "Booking not found" };
+
+    const protectedStatuses = [
+      "confirmed",
+      "vendor_on_way",
+      "in_progress",
+      "completed",
+    ];
+    if (
+      (protectedStatuses.includes(booking.status) ||
+        booking.paymentStatus === "paid") &&
+      !force
+    ) {
+      throw {
+        statusCode: 400,
+        message:
+          "This booking is active or paid. Cancel it first, or pass force=true",
+      };
+    }
+
+    if (
+      booking.slotType === "schedule" &&
+      booking.scheduleDetails?.vendorSlotId
+    ) {
+      await releaseVendorSlot(booking.scheduleDetails.vendorSlotId);
+    }
+
+    await SlotBooking.deleteOne({ _id: id });
+    return booking;
   },
 };
 

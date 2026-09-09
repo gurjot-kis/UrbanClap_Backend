@@ -89,10 +89,36 @@ export const SlotbookingController = {
     }
   },
 
+  cancelSlotBooking: async (req, res) => {
+    try {
+      const userId = req.user._id;
+      const { id } = req.params;
+      const { reason } = req.body;
+
+      const booking = await SlotBookingService.cancelSlotBooking(
+        userId,
+        id,
+        reason,
+      );
+
+      return sendSuccess(res, {
+        code: 200,
+        message: "Booking cancelled successfully",
+        data: booking,
+      });
+    } catch (err) {
+      return sendError(res, {
+        code: err.statusCode || 500,
+        message: err.message || "Something went wrong",
+        error: err.message,
+      });
+    }
+  },
+
   deleteSlotBooking: async (req, res) => {
     try {
       const force = req.query.force === "true";
-      const booking = await slotBookingService.deleteSlotBooking(
+      const booking = await SlotBookingService.deleteSlotBooking(
         req.params.id,
         force,
       );
@@ -110,3 +136,5 @@ export const SlotbookingController = {
     }
   },
 };
+
+export default SlotbookingController;

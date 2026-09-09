@@ -14,23 +14,20 @@ import {
 const PAGE_SIZE = 20;
 
 async function searchProducts(query, catFilter, skip) {
-  const raw = await Product.find(
-    { $text: { $search: query } },
-    { score: { $meta: "textScore" } }
-  ).select("name status").limit(5).lean();
   const docs = await Product.find(buildTextQuery(query, catFilter), {
     score: { $meta: "textScore" },
   })
-    .select("name slug mainImage basePrice rating category_id")
+    .select("name slug mainImage basePrice rating variants")
     .sort({ score: { $meta: "textScore" }, "rating.average": -1 })
     .skip(skip)
     .limit(PAGE_SIZE)
     .lean();
 
-  return docs.map((d) => ({
+  return docs.map(({ score, variants, ...d }) => ({
     ...d,
     _source: "service",
-    _textScore: d.score || 0,
+    _textScore: score || 0,
+    isVariantAvailable: Array.isArray(variants) && variants.length > 0,
   }));
 }
 
@@ -38,16 +35,17 @@ async function searchNativeProducts(query, catFilter, skip) {
   const docs = await NativeProduct.find(buildTextQuery(query, catFilter), {
     score: { $meta: "textScore" },
   })
-    .select("product_name slug main_image base_price rating category_id")
+    .select("product_name slug main_image base_price rating options")
     .sort({ score: { $meta: "textScore" }, "rating.average": -1 })
     .skip(skip)
     .limit(PAGE_SIZE)
     .lean();
 
-  return docs.map((d) => ({
+  return docs.map(({ score, options, ...d }) => ({
     ...d,
     _source: "native",
-    _textScore: d.score || 0,
+    _textScore: score || 0,
+    isOptionAvailable: Array.isArray(options) && options.length > 0,
   }));
 }
 

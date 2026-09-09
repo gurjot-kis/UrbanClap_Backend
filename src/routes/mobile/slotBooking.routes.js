@@ -8,6 +8,13 @@ router.use(authMiddleware, authorizeRoles(ROLES.USER));
 
 router.post("/check-coverage", SlotbookingController.checkCoverage);
 router.get("/available-slots", SlotbookingController.fetchAvailableSlots);
-router.get("/booking-slot", SlotbookingController.addSlotBooking);
+router.post("/booking-slot", SlotbookingController.addSlotBooking);
+
+router
+  .route("/booking-slot/:id")
+  .put(SlotbookingController.updateSlotBooking)
+  .delete(SlotbookingController.deleteSlotBooking);
+
+router.patch("/:id/cancel", SlotbookingController.cancelSlotBooking);
 
 export default router;
