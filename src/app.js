@@ -7,6 +7,7 @@ import indexRoutes from "./routes/index.js";
 import MobileRoutes from "./routes/mobile/index.routes.js";
 import AdminRoutes from "./routes/admin/index.routes.js";
 import VendorRoutes from "./routes/vendor/index.routes.js";
+import CommonRoutes from "./routes/common/index.routes.js";
 import { errorHandler } from "./middlewares/error.middleware.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -35,6 +36,7 @@ app.use("/api", indexRoutes);
 app.use("/api/mobile", MobileRoutes);
 app.use("/api/admin", AdminRoutes);
 app.use("/api/vendor", VendorRoutes);
+app.use("/api/common", CommonRoutes);
 
 app.use(errorHandler);
 
