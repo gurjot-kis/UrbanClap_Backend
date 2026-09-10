@@ -15,6 +15,4 @@ router
   .put(SlotbookingController.updateSlotBooking)
   .delete(SlotbookingController.deleteSlotBooking);
 
-router.patch("/:id/cancel", SlotbookingController.cancelSlotBooking);
-
 export default router;

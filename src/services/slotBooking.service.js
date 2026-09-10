@@ -494,6 +494,7 @@ export const SlotBookingService = {
       .select("date startTime endTime category_id vendor_id")
       .lean();
 
+    console.log("slots", slots);
     if (slots.length === 0) return [];
 
     const todayUTCDay = startOfToday.getUTCDay();
@@ -780,45 +781,6 @@ export const SlotBookingService = {
 
     await booking.save();
     return booking;
-  },
-
-  cancelSlotBooking: async (userId, bookingId, reason) => {
-    if (!isValidObjectId(bookingId))
-      throw { statusCode: 400, message: "Invalid booking id" };
-
-    const booking = await SlotBooking.findOne({
-      _id: bookingId,
-      user: userId,
-    });
-
-    if (!booking) throw { statusCode: 404, message: "Booking not found" };
-
-    if (booking.status === "cancelled")
-      throw { statusCode: 400, message: "Booking is already cancelled" };
-
-    if (["completed", "in_progress"].includes(booking.status))
-      throw {
-        statusCode: 400,
-        message: `Cannot cancel a booking that is ${booking.status}`,
-      };
-
-    // release the vendor slot
-    if (
-      booking.slotType === "schedule" &&
-      booking.scheduleDetails?.vendorSlotId
-    ) {
-      await releaseVendorSlot(booking.scheduleDetails.vendorSlotId);
-    }
-
-    booking.status = "cancelled";
-    booking.cancellation = {
-      cancelledBy: "user",
-      reason: reason || null,
-      cancelledAt: new Date(),
-      refundAmount: null,
-    };
-
-    return booking.save();
   },
 
   deleteSlotBooking: async (id, force = false) => {

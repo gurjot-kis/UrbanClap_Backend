@@ -10,6 +10,8 @@ import AddressRoutes from "./address.routes.js";
 import NativeProductRoutes from "./native-products.routes.js";
 import SearchRoutes from "./search.routes.js";
 import SlotBookingRoutes from "./slotBooking.routes.js";
+import OrderRoutes from "./order.routes.js";
+import PaymentRoutes from "./payment.routes.js";
 
 const router = express.Router();
 
@@ -21,8 +23,11 @@ router.use("/native-category", NativeCategoryRoutes);
 router.use("/native-product", NativeProductRoutes);
 router.use("/cart", CartRoutes);
 router.use("/address", AddressRoutes);
-router.use(PageContentRoutes);
 router.use("/search", SearchRoutes);
 router.use("/slot", SlotBookingRoutes);
+router.use("/order", OrderRoutes);
+router.use("/payment", PaymentRoutes);
+
+router.use(PageContentRoutes);
 
 export default router;

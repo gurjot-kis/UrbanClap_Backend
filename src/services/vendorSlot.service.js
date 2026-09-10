@@ -18,7 +18,6 @@ const formatTimeToAMPM = (time) => {
   return `${hour12}:${m.toString().padStart(2, "0")} ${period}`;
 };
 
-// ✅ check if category_id is any ancestor of service_id
 const belongsToCategory = async (service_id, category_id) => {
   let current = await Category.findById(service_id).lean();
   while (current) {

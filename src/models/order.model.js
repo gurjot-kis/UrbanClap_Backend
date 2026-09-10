@@ -24,6 +24,12 @@ const orderItemSchema = new Schema(
     unitPrice: { type: Number, required: true, min: 0 },
     quantity: { type: Number, required: true, min: 1, default: 1 },
     lineTotal: { type: Number, required: true, min: 0 },
+
+    slotBooking_id: {
+      type: Schema.Types.ObjectId,
+      ref: "SlotBooking",
+      default: null,
+    },
   },
   { _id: false },
 );
@@ -59,17 +65,16 @@ const orderSchema = new Schema(
       required: true,
     },
 
-    slotBooking_id: {
-      type: Schema.Types.ObjectId,
-      ref: "SlotBooking",
-      default: null,
-    },
-
     vendor_id: {
       type: Schema.Types.ObjectId,
       ref: "User",
       default: null,
       index: true,
+    },
+
+    slotBooking_ids: {
+      type: [{ type: Schema.Types.ObjectId, ref: "SlotBooking" }],
+      default: [],
     },
 
     items: {

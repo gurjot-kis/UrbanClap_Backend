@@ -9,6 +9,8 @@ import { AddressController } from "./address.controller.js";
 import { NativeProductController } from "./native-product.controller.js";
 import { SearchController } from "./search.controller.js";
 import { SlotbookingController } from "./slotBooking.controller.js";
+import { OrderController } from "./order.controller.js";
+import { PaymentController } from "./payment.controller.js";
 
 export {
   UserController,
@@ -22,4 +24,6 @@ export {
   NativeProductController,
   SearchController,
   SlotbookingController,
+  OrderController,
+  PaymentController,
 };
