@@ -127,7 +127,6 @@ const ProductSchema = new mongoose.Schema(
 // ─── Indexes ─────────────────────────────────────────────────────────────────
 
 ProductSchema.index({ name: 1 });
-ProductSchema.index({ slug: 1 });
 ProductSchema.index({ category_id: 1 });
 ProductSchema.index({ sub_category_id: 1 });
 ProductSchema.index({ vendor_id: 1 });

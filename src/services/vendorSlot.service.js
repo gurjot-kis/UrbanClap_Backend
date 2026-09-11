@@ -298,7 +298,7 @@ export const VendorSlotService = {
 
     const [slots, total] = await Promise.all([
       VendorSlot.find(filter)
-        .populate("category_id", "name slotConfig")
+        .populate("category_id", "name slotConfig category_image")
         .sort({ date: 1, startTime: 1 })
         .skip(skip)
         .limit(limitNum)
@@ -328,6 +328,7 @@ export const VendorSlotService = {
       vendor_id: slot.vendor_id,
       category_id: slot.category_id?._id,
       categoryName: slot.category_id?.name || null,
+      categoryImage: slot.category_id?.category_image || null,
       slotType: getSlotTypeForCategory(slot.category_id),
       date: slot.date,
       startTime: formatTimeToAMPM(slot.startTime),

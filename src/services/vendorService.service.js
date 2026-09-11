@@ -12,6 +12,99 @@ const isLeafCategory = async (category_id) => {
   return childCount === 0;
 };
 
+export const getMyServices = async (vendor_id, query = {}) => {
+  if (!isValidObjectId(vendor_id)) {
+    throw { statusCode: 400, message: "Invalid vendor id" };
+  }
+
+  const { status, search, page = 1, limit = 20 } = query;
+
+  const pageNum = Math.max(Number(page) || 1, 1);
+  const limitNum = Math.min(Math.max(Number(limit) || 20, 1), 100);
+  const skip = (pageNum - 1) * limitNum;
+
+  const filter = { vendor_id };
+
+  if (status) {
+    if (!["active", "inactive"].includes(status)) {
+      throw {
+        statusCode: 400,
+        message: "Invalid status. Use active or inactive",
+      };
+    }
+
+    filter.status = status;
+  }
+
+  // Search service/category by name
+  if (search?.trim()) {
+    const searchRegex = new RegExp(search.trim(), "i");
+
+    const categories = await CategoryModel.find({
+      name: searchRegex,
+      status: "active",
+    })
+      .select("_id")
+      .lean();
+
+    const categoryIds = categories.map((category) => category._id);
+
+    filter.service_id = { $in: categoryIds };
+  }
+
+  const [vendorServices, total] = await Promise.all([
+    VendorServiceModel.find(filter)
+      .populate({
+        path: "service_id",
+        select: "name category_image parent_id",
+        populate: {
+          path: "parent_id",
+          select: "name category_image",
+        },
+      })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum)
+      .lean(),
+
+    VendorServiceModel.countDocuments(filter),
+  ]);
+
+  const data = vendorServices.map((vs) => ({
+    _id: vs._id,
+    category: vs.service_id?.parent_id
+      ? {
+          _id: vs.service_id.parent_id._id,
+          name: vs.service_id.parent_id.name,
+          category_image: vs.service_id.parent_id.category_image || null,
+        }
+      : null,
+    service: vs.service_id
+      ? {
+          _id: vs.service_id._id,
+          name: vs.service_id.name,
+          category_image: vs.service_id.category_image || null,
+        }
+      : null,
+
+    status: vs.status,
+  }));
+
+  const totalPages = Math.ceil(total / limitNum);
+
+  return {
+    data,
+    pagination: {
+      total,
+      page: pageNum,
+      limit: limitNum,
+      totalPages,
+      hasNextPage: pageNum < totalPages,
+      hasPrevPage: pageNum > 1,
+    },
+  };
+};
+
 export const addVendorServices = async (vendor_id, service_ids) => {
   if (!Array.isArray(service_ids) || service_ids.length === 0)
     throw { statusCode: 400, message: "service_ids array is required" };
@@ -75,34 +168,11 @@ export const addVendorServices = async (vendor_id, service_ids) => {
   }
 };
 
-export const getMyServices = async (vendor_id) => {
-  const vendorServices = await VendorServiceModel.find({ vendor_id })
-    .populate({
-      path: "service_id",
-      select: "name description durationMinutes parent_id level",
-      populate: {
-        path: "parent_id",
-        select: "name",
-      },
-    })
-    .lean();
-
-  return vendorServices.map((vs) => ({
-    _id: vs._id,
-    service_id: vs.service_id?._id,
-    name: vs.service_id?.name,
-    description: vs.service_id?.description,
-    durationMinutes: vs.service_id?.durationMinutes,
-    subCategory: vs.service_id?.parent_id?.name || null,
-    status: vs.status,
-  }));
-};
-
 export const toggleVendorService = async (vendor_id, service_id) => {
   if (!isValidObjectId(service_id))
     throw { statusCode: 400, message: "Invalid service_id" };
 
-  const vs = await VendorServiceModel.findOne({ vendor_id, service_id });
+  const vs = await VendorServiceModel.findOne({ vendor_id, _id: service_id });
   if (!vs) throw { statusCode: 404, message: "Service not found in your list" };
 
   vs.status = vs.status === "active" ? "inactive" : "active";
@@ -114,9 +184,79 @@ export const removeVendorService = async (vendor_id, service_id) => {
   if (!isValidObjectId(service_id))
     throw { statusCode: 400, message: "Invalid service_id" };
 
-  const vs = await VendorServiceModel.findOne({ vendor_id, service_id });
+  const vs = await VendorServiceModel.findOne({ vendor_id, _id: service_id });
   if (!vs) throw { statusCode: 404, message: "Service not found in your list" };
 
-  await VendorServiceModel.deleteOne({ _id: vs._id });
+  await VendorServiceModel.deleteOne({ _id: service_id });
   return vs;
+};
+
+export const getAllMyServices = async (vendor_id, query = {}) => {
+  if (!isValidObjectId(vendor_id)) {
+    throw { statusCode: 400, message: "Invalid vendor id" };
+  }
+
+  const { status, search } = query;
+
+  const filter = { vendor_id };
+
+  if (status) {
+    if (!["active", "inactive"].includes(status)) {
+      throw {
+        statusCode: 400,
+        message: "Invalid status. Use active or inactive",
+      };
+    }
+
+    filter.status = status;
+  }
+
+  if (search?.trim()) {
+    const searchRegex = new RegExp(search.trim(), "i");
+
+    const categories = await CategoryModel.find({
+      name: searchRegex,
+      status: "active",
+    })
+      .select("_id")
+      .lean();
+
+    const categoryIds = categories.map((category) => category._id);
+
+    filter.service_id = { $in: categoryIds };
+  }
+
+  const vendorServices = await VendorServiceModel.find(filter)
+    .populate({
+      path: "service_id",
+      select: "name category_image parent_id",
+      populate: {
+        path: "parent_id",
+        select: "name category_image",
+      },
+    })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  return vendorServices.map((vs) => ({
+    _id: vs._id,
+
+    category: vs.service_id?.parent_id
+      ? {
+          _id: vs.service_id.parent_id._id,
+          name: vs.service_id.parent_id.name,
+          category_image: vs.service_id.parent_id.category_image || null,
+        }
+      : null,
+
+    service: vs.service_id
+      ? {
+          _id: vs.service_id._id,
+          name: vs.service_id.name,
+          category_image: vs.service_id.category_image || null,
+        }
+      : null,
+
+    status: vs.status,
+  }));
 };

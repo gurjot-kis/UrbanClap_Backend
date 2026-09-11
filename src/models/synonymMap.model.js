@@ -27,10 +27,9 @@ const SynonymMapSchema = new mongoose.Schema(
       default: 0, // increment when this mapping actually fires
     },
   },
-  { timestamps: true, versionKey: false }
+  { timestamps: true, versionKey: false },
 );
 
-SynonymMapSchema.index({ term: 1 });
 SynonymMapSchema.index({ status: 1 });
 
 export default mongoose.model("SynonymMap", SynonymMapSchema);

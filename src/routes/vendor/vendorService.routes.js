@@ -12,6 +12,11 @@ router
   .get(VendorServiceController.getMyServices)
   .post(VendorServiceController.addVendorServices);
 
+router.get(
+  "/all-services",
+  VendorServiceController.getAllMyServicesWithoutPagination,
+);
+
 router
   .route("/:service_id")
   .patch(VendorServiceController.toggleVendorService)

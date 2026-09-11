@@ -12,7 +12,6 @@ const nativeCategorySchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "NativeCategory",
       default: null,
-      index: true,
     },
 
     level: {
@@ -44,7 +43,6 @@ const nativeCategorySchema = new mongoose.Schema(
       type: String,
       enum: ["active", "inactive"],
       default: "active",
-      index: true,
     },
 
     slug: {

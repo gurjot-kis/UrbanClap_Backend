@@ -152,7 +152,6 @@ const NativeProductSchema = new mongoose.Schema(
 );
 
 // ─── Indexes ──────────────────────────────────────────────────────────────────
-NativeProductSchema.index({ slug: 1 });
 NativeProductSchema.index({ category_id: 1 });
 NativeProductSchema.index({ sub_category_id: 1 });
 NativeProductSchema.index({ status: 1 });
